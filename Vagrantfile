@@ -14,21 +14,15 @@ SERVERS = {
     cpus: 2,
     memory: 2048
   },
-  "mc01" => {
-    box: "ubuntu/jammy64",
-    ip: "192.168.56.32",
-    cpus: 1,
-    memory: 512
-  },
   "db01" => {
     box: "generic/rocky9",
-    ip: "192.168.56.33",
+    ip: "192.168.56.32",
     cpus: 1,
     memory: 1024
   },
   "monitoring01" => {
     box: "ubuntu/jammy64",
-    ip: "192.168.56.35",
+    ip: "192.168.56.33",
     cpus: 2,
     memory: 2048
   }

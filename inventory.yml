@@ -5,24 +5,27 @@ all:
         web01:
           ansible_host: 192.168.56.30
           ansible_user: vagrant
-          ansible_ssh_private_key_file: .vagrant/machines/web01/virtualbox/private_key
+          ansible_ssh_private_key_file: ~/.ssh/vagrant-enterprise-sre-lab/web01
     appservers:
       hosts:
         app01:
           ansible_host: 192.168.56.31
           ansible_user: vagrant
-          ansible_ssh_private_key_file: .vagrant/machines/app01/virtualbox/private_key
+          ansible_ssh_private_key_file: ~/.ssh/vagrant-enterprise-sre-lab/app01
     databases:
       hosts:
         db01:
           ansible_host: 192.168.56.32
           ansible_user: vagrant
-          ansible_ssh_private_key_file: .vagrant/machines/db01/virtualbox/private_key
+          ansible_ssh_private_key_file: ~/.ssh/vagrant-enterprise-sre-lab/db01
     monitoring:
       hosts:
         monitoring01:
           ansible_host: 192.168.56.33
           ansible_user: vagrant
-          ansible_ssh_private_key_file: .vagrant/machines/monitoring01/virtualbox/private_key
+          ansible_ssh_private_key_file: ~/.ssh/vagrant-enterprise-sre-lab/monitoring01
   vars:
     ansible_python_interpreter: /usr/bin/python3
+    ansible_ssh_common_args: >-
+      -o StrictHostKeyChecking=no
+      -o UserKnownHostsFile=/dev/null

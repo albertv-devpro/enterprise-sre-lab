@@ -22,7 +22,7 @@ SERVERS = {
   },
   "monitoring01" => {
     box: "ubuntu/jammy64",
-    ip: "192.168.56.28",
+    ip: "192.168.56.33",
     cpus: 2,
     memory: 2048
   }

@@ -29,6 +29,8 @@ SERVERS = {
 }.freeze
 
 Vagrant.configure("2") do |config|
+  config.vm.boot_timeout = 900
+
   config.hostmanager.enabled = true
   config.hostmanager.manage_host = true
   config.hostmanager.ignore_private_ip = false
@@ -41,7 +43,7 @@ Vagrant.configure("2") do |config|
       node.vm.network "private_network", ip: opts[:ip]
 
       node.vm.provider "virtualbox" do |vb|
-        vb.name = name
+        vb.name = "enterprise-sre-lab-#{name}"
         vb.cpus = opts[:cpus]
         vb.memory = opts[:memory]
         vb.gui = false

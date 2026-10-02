@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Enterprise SRE Lab - {{ inventory_hostname }}</title>
+</head>
+<body>
+  <main>
+    <h1>Enterprise SRE Lab Operational</h1>
+    <p>Managed via Ansible</p>
+    <p><strong>Target Node:</strong> {{ inventory_hostname }} ({{ ansible_facts['distribution'] }})</p>
+  </main>
+</body>
+</html>

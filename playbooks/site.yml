@@ -26,3 +26,14 @@
           - vim
         state: present
 
+- name: Configure Node Exporter on all nodes
+  hosts: all
+  become: true
+  roles:
+    - monitoring
+
+- name: Configure the web server
+  hosts: webservers
+  become: true
+  roles:
+    - webserver

@@ -8,3 +8,8 @@
   ansible.builtin.service:
     name: prometheus-alertmanager
     state: restarted
+
+- name: Restart Grafana
+  ansible.builtin.service:
+    name: grafana-server
+    state: restarted

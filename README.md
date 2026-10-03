@@ -278,7 +278,11 @@ deploys rules for a Node Exporter target being down and sustained high CPU usage
 Alertmanager forwards firing and resolved events to the API. Remediation is
 disabled unless `AUTO_REMEDIATION_ENABLED=true`; when enabled, only a firing
 `NodeExporterDown` alert for a known inventory host can reapply the Node
-Exporter role, with a ten-minute cooldown per host.
+Exporter role, with a ten-minute cooldown per host. The role installs the local
+development CA on `monitoring01` for Alertmanager's HTTPS webhook. Grafana
+anonymous access is disabled and viewers cannot edit dashboards; Grafana OSS
+provides built-in Viewer/Editor/Admin roles, while fine-grained RBAC depends on
+edition.
 
 ## Run the self-service API
 
@@ -286,7 +290,7 @@ The API is developed and run in WSL. These commands are from the project root:
 
 ```bash
 sudo apt update
-sudo apt install -y python3-venv
+sudo apt install -y python3-venv openssl
 
 python3 -m venv "$HOME/.venvs/enterprise-sre-automation-api"
 source "$HOME/.venvs/enterprise-sre-automation-api/bin/activate"
@@ -298,12 +302,21 @@ export AUTOMATION_API_TOKEN="$(python -c 'import secrets; print(secrets.token_ur
 printf '%s' "$AUTOMATION_API_TOKEN" \
   > "$HOME/.config/enterprise-sre-automation/api-token"
 chmod 600 "$HOME/.config/enterprise-sre-automation/api-token"
+bash automation-api/generate-dev-certs.sh
 ```
 
-For **local API use and manual requests**, bind only to WSL localhost:
+The script creates a local development CA and server certificate outside the
+repository in `~/.config/enterprise-sre-automation/tls`, with SANs for
+`localhost`, `127.0.0.1`, and `192.168.56.1`. Keep `lab-ca.key` private; only
+the public CA certificate is deployed to the VM.
+
+For **local API use and manual requests**, bind to WSL localhost using TLS:
 
 ```bash
-uvicorn --app-dir automation-api main:app --host 127.0.0.1 --port 5000
+uvicorn --app-dir automation-api main:app \
+  --host 127.0.0.1 --port 5000 \
+  --ssl-certfile "$HOME/.config/enterprise-sre-automation/tls/api.crt" \
+  --ssl-keyfile "$HOME/.config/enterprise-sre-automation/tls/api.key"
 ```
 
 In another WSL terminal, load the token into that shell and check the health
@@ -311,7 +324,8 @@ endpoint:
 
 ```bash
 export AUTOMATION_API_TOKEN="$(cat "$HOME/.config/enterprise-sre-automation/api-token")"
-curl -sS http://127.0.0.1:5000/healthz
+curl --cacert "$HOME/.config/enterprise-sre-automation/tls/lab-ca.crt" \
+  -sS https://127.0.0.1:5000/healthz
 ```
 
 ### API endpoints
@@ -331,7 +345,8 @@ inventory paths, or playbook paths.
 Queue a webserver run and inspect its response:
 
 ```bash
-curl -sS -X POST http://127.0.0.1:5000/api/v1/deployments \
+curl --cacert "$HOME/.config/enterprise-sre-automation/tls/lab-ca.crt" \
+  -sS -X POST https://127.0.0.1:5000/api/v1/deployments \
   -H "X-API-Key: $AUTOMATION_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"target":"webserver"}'
@@ -340,9 +355,10 @@ curl -sS -X POST http://127.0.0.1:5000/api/v1/deployments \
 Use the returned ticket ID to check job status and the bounded Ansible output:
 
 ```bash
-curl -sS \
+curl --cacert "$HOME/.config/enterprise-sre-automation/tls/lab-ca.crt" \
+  -sS \
   -H "X-API-Key: $AUTOMATION_API_TOKEN" \
-  http://127.0.0.1:5000/api/v1/tickets/CHG-your-ticket-id
+  https://127.0.0.1:5000/api/v1/tickets/CHG-your-ticket-id
 ```
 
 The API runs a single in-process job queue and serializes playbook executions.
@@ -363,7 +379,10 @@ port-forward sends that traffic to the current WSL IPv4 address.
    cd "$PROJECT_DIR"
    source "$HOME/.venvs/enterprise-sre-automation-api/bin/activate"
    export AUTOMATION_API_TOKEN="$(cat "$HOME/.config/enterprise-sre-automation/api-token")"
-   uvicorn --app-dir automation-api main:app --host 0.0.0.0 --port 5000
+   uvicorn --app-dir automation-api main:app \
+     --host 0.0.0.0 --port 5000 \
+     --ssl-certfile "$HOME/.config/enterprise-sre-automation/tls/api.crt" \
+     --ssl-keyfile "$HOME/.config/enterprise-sre-automation/tls/api.key"
    ```
 
 2. In **elevated Windows PowerShell**, create/update the port proxy and firewall
@@ -373,6 +392,10 @@ port-forward sends that traffic to the current WSL IPv4 address.
    ```powershell
    powershell.exe -ExecutionPolicy Bypass -File "$env:USERPROFILE\enterprise-sre-lab\automation-api\windows-portproxy.ps1"
    ```
+
+   Generate the API CA and certificate with
+   `bash automation-api/generate-dev-certs.sh` first. The role installs only the
+   public CA certificate on `monitoring01`.
 
    WSL's IP can change after a WSL restart; rerun the script after such a
    restart. The API must be listening when forwarding is tested.
@@ -389,26 +412,29 @@ port-forward sends that traffic to the current WSL IPv4 address.
 
    ```bash
    cd ~/enterprise-sre-lab
-   vagrant ssh monitoring01 -c "curl -fsS http://192.168.56.1:5000/healthz"
+   vagrant ssh monitoring01 -c "curl --cacert /etc/alertmanager/api-ca.crt -fsS https://192.168.56.1:5000/healthz"
    ```
 
 5. Send a test event from WSL and inspect the audit log:
 
    ```bash
    export AUTOMATION_API_TOKEN="$(cat "$HOME/.config/enterprise-sre-automation/api-token")"
-   curl -sS -X POST http://127.0.0.1:5000/api/v1/webhooks/alertmanager \
+   curl --cacert "$HOME/.config/enterprise-sre-automation/tls/lab-ca.crt" \
+     -sS -X POST https://127.0.0.1:5000/api/v1/webhooks/alertmanager \
      -H "Authorization: Bearer $AUTOMATION_API_TOKEN" \
      -H "Content-Type: application/json" \
      -d '{"receiver":"sre-api-webhook","status":"firing","alerts":[{"status":"firing","labels":{"alertname":"WebhookConnectivityTest","instance":"db01:9100","severity":"warning"},"annotations":{"summary":"Manual webhook test"}}]}'
 
    curl -sS \
      -H "X-API-Key: $AUTOMATION_API_TOKEN" \
-     'http://127.0.0.1:5000/api/v1/tickets?limit=20'
+     --cacert "$HOME/.config/enterprise-sre-automation/tls/lab-ca.crt" \
+     'https://127.0.0.1:5000/api/v1/tickets?limit=20'
    ```
 
 Prometheus alert delivery is asynchronous; inspect Prometheus's **Alerts** page
 and Alertmanager's **Alerts** page when testing rule-driven notifications.
-Firing/resolved notifications are logged as incidents only.
+Events are logged as incidents; only the explicitly enabled and allowlisted
+Node Exporter recovery can trigger a remediation play.
 
 ## Test the API code
 
@@ -451,8 +477,9 @@ python -m pytest
   `roles/<role-name>/tasks/main.yml` and that `roles_path` points to this
   checkout.
 - **Alertmanager cannot reach the API:** Uvicorn must be listening on WSL
-  interfaces, the Windows port-forward must point to the current WSL IP, and
-  the API token copied by Ansible must match the running API token.
+  interfaces with the TLS certificate, the Windows port-forward must point to
+  the current WSL IP, and the API token/CA copied by Ansible must match the
+  running API token and certificate.
 - **No auto-remediation is queued:** remediation is opt-in, handles only
   firing `NodeExporterDown` alerts for known inventory targets, and is subject
   to a ten-minute cooldown. It cannot recover an unreachable VM.

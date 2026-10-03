@@ -326,6 +326,7 @@ def test_github_push_rejects_unallowlisted_repository(client, monkeypatch):
 def test_github_delivery_replay_does_not_queue_a_second_run(client, monkeypatch):
     monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", "github-test-secret")
     monkeypatch.setenv("GITOPS_REPOSITORY", "example/enterprise-sre-lab")
+    monkeypatch.setattr(main, "checked_out_commit", lambda: "a" * 40)
     queued = []
     monkeypatch.setattr(
         main,

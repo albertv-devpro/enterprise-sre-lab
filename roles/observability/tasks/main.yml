@@ -12,12 +12,21 @@
   become: false
   register: observability_api_token
 
+- name: Check that the local development CA certificate exists on the controller
+  ansible.builtin.stat:
+    path: "{{ lookup('ansible.builtin.env', 'HOME') }}/.config/enterprise-sre-automation/tls/lab-ca.crt"
+  delegate_to: localhost
+  become: false
+  register: observability_api_ca
+
 - name: Require an Alertmanager webhook token
   ansible.builtin.assert:
     that:
       - observability_api_token.stat.exists
       - observability_api_token.stat.isreg
-    fail_msg: Create the API token at ~/.config/enterprise-sre-automation/api-token before deploying observability.
+      - observability_api_ca.stat.exists
+      - observability_api_ca.stat.isreg
+    fail_msg: Create the API token and development CA certificate using automation-api/generate-dev-certs.sh before deploying observability.
 
 - name: Install Grafana repository prerequisites
   ansible.builtin.apt:
@@ -95,6 +104,15 @@
     group: prometheus
     mode: '0750'
 
+- name: Install API development CA for Alertmanager
+  ansible.builtin.copy:
+    src: "{{ lookup('ansible.builtin.env', 'HOME') }}/.config/enterprise-sre-automation/tls/lab-ca.crt"
+    dest: /etc/alertmanager/api-ca.crt
+    owner: root
+    group: prometheus
+    mode: '0644'
+  notify: Restart Alertmanager
+
 - name: Install Alertmanager webhook token
   ansible.builtin.copy:
     content: "{{ lookup('ansible.builtin.file', lookup('ansible.builtin.env', 'HOME') + '/.config/enterprise-sre-automation/api-token') | trim }}\n"
@@ -132,3 +150,21 @@
     name: grafana-server
     state: started
     enabled: true
+
+- name: Disable anonymous Grafana access
+  ansible.builtin.ini_file:
+    path: /etc/grafana/grafana.ini
+    section: auth.anonymous
+    option: enabled
+    value: 'false'
+    no_extra_spaces: true
+  notify: Restart Grafana
+
+- name: Prevent Grafana viewers from editing dashboards
+  ansible.builtin.ini_file:
+    path: /etc/grafana/grafana.ini
+    section: users
+    option: viewers_can_edit
+    value: 'false'
+    no_extra_spaces: true
+  notify: Restart Grafana

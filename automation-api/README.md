@@ -113,7 +113,7 @@ In an **elevated Windows PowerShell** window, configure the restricted
 forwarding rule (rerun after WSL restarts if its IP address changes):
 
 ```powershell
-powershell.exe -ExecutionPolicy Bypass -File $env:USERPROFILE\enterprise-sre-lab\automation-api\windows-portproxy.ps1
+powershell.exe -ExecutionPolicy Bypass -File "$env:USERPROFILE\enterprise-sre-lab\automation-api\windows-portproxy.ps1"
 ```
 
 With the API running, deploy the Prometheus rules and Alertmanager receiver:

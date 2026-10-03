@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - localhost:9090
+
+  - job_name: enterprise-nodes
+    static_configs:
+      - targets:
+{% for host in groups['all'] | sort %}
+          - "{{ hostvars[host]['ansible_host'] | default(host) }}:9100"
+{% endfor %}

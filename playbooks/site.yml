@@ -37,3 +37,9 @@
   become: true
   roles:
     - webserver
+
+- name: Deploy the observability stack
+  hosts: monitoring
+  become: true
+  roles:
+    - observability

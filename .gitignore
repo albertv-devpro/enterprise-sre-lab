@@ -1,3 +1,6 @@
 .vagrant/
 *.retry
 .DS_Store
+automation-api/.venv/
+automation-api/__pycache__/
+automation-api/tests/__pycache__/

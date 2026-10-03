@@ -1,0 +1,20 @@
+groups:
+  - name: node-exporter
+    rules:
+      - alert: NodeExporterDown
+        expr: up{job="enterprise-nodes"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Node Exporter is down on {% raw %}{{ $labels.instance }}{% endraw %}"
+          description: "Prometheus has been unable to scrape {% raw %}{{ $labels.instance }}{% endraw %} for more than one minute."
+
+      - alert: NodeHighCPUUsage
+        expr: 100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{job="enterprise-nodes", mode="idle"}[5m]))) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage on {% raw %}{{ $labels.instance }}{% endraw %}"
+          description: "CPU usage has exceeded 80% for more than five minutes."

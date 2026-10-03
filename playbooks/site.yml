@@ -3,6 +3,7 @@
   hosts: all
   become: true
   gather_facts: true
+  tags: [baseline]
 
   tasks:
     - name: Update APT package cache
@@ -29,17 +30,20 @@
 - name: Configure Node Exporter on all nodes
   hosts: all
   become: true
+  tags: [node_exporter]
   roles:
     - monitoring
 
 - name: Configure the web server
   hosts: webservers
   become: true
+  tags: [webserver]
   roles:
     - webserver
 
 - name: Deploy the observability stack
   hosts: monitoring
   become: true
+  tags: [observability]
   roles:
     - observability

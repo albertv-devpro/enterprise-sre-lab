@@ -16,16 +16,21 @@ and VirtualBox provide the infrastructure; Ansible configures it from Ubuntu
 - Node Exporter on every VM, with Prometheus scraping the exporters.
 - Prometheus alert rules and Alertmanager forwarding incidents to the local
   FastAPI service.
-- A token-protected self-service API that runs allowlisted Ansible targets and
-  records deployment and alert events in SQLite.
+- A token-protected self-service API that runs allowlisted Ansible targets,
+  records deployment and alert events in SQLite, and supports opt-in,
+  inventory-limited Node Exporter remediation.
+- A signed GitHub push webhook endpoint with repository/branch allowlisting
+  for triggering a playbook against the API host's current checkout.
 - A Windows port-forwarding helper to connect Alertmanager in a VM to the API
   running in WSL.
 
 The baseline, webserver, Node Exporter, Prometheus/Grafana roles, and API
-deployment endpoint are implemented. The Alertmanager-to-API forwarding and
-alert-rule configuration are also in the repository; apply them with the
-documented observability command before expecting VM-originated alerts in the
-API audit log.
+deployment endpoint are implemented. Alertmanager forwarding, alert rules,
+guarded opt-in Node Exporter remediation, and signed GitHub webhook handling
+are also implemented. The Windows-to-WSL forwarding and observability setup
+must be applied before VM-originated alerts can reach the API. The GitHub
+endpoint does not pull repository changes and requires a separately secured
+public HTTPS ingress for real GitHub.com delivery.
 
 ## Architecture
 
@@ -50,6 +55,32 @@ Windows host
 Ansible is run from WSL against the VM host-only addresses. Vagrant SSH uses
 VirtualBox NAT/port forwarding and is separate from Ansible's direct SSH
 connection to those addresses.
+
+### Operational workflow
+
+```mermaid
+sequenceDiagram
+    participant A as Ansible in WSL
+    participant V as Lab VMs
+    participant P as Prometheus on monitoring01
+    participant M as Alertmanager on monitoring01
+    participant API as FastAPI in WSL
+    A->>V: Apply baseline and roles
+    V->>P: Node Exporter metrics :9100
+    P->>P: Evaluate alert rules
+    P->>M: Send firing/resolved alert
+    M->>API: Signed-by-token webhook via Windows host-only forward
+    API->>API: Store incident in SQLite
+    opt Explicitly enabled and allowlisted NodeExporterDown
+        API->>A: Queue node_exporter role for mapped host
+        A->>V: Reapply exporter package/service state
+        API->>API: Record remediation result and cooldown
+    end
+```
+
+The GitHub push endpoint is a separate path: it verifies the push signature
+and configured repository/branch, then starts Ansible using the API host's
+current checkout. It does not fetch or check out the push commit.
 
 | Inventory group | Host | OS | Address | Services |
 | --- | --- | --- | --- | --- |
@@ -244,8 +275,10 @@ credentials are safe.
 
 Prometheus scrapes each inventory host on port `9100`. The observability role
 deploys rules for a Node Exporter target being down and sustained high CPU usage.
-Alertmanager records firing and resolved alerts through the API; it does not
-trigger automatic remediation.
+Alertmanager forwards firing and resolved events to the API. Remediation is
+disabled unless `AUTO_REMEDIATION_ENABLED=true`; when enabled, only a firing
+`NodeExporterDown` alert for a known inventory host can reapply the Node
+Exporter role, with a ten-minute cooldown per host.
 
 ## Run the self-service API
 
@@ -382,7 +415,8 @@ Firing/resolved notifications are logged as incidents only.
 ```bash
 source "$HOME/.venvs/enterprise-sre-automation-api/bin/activate"
 python -m pip install -r automation-api/requirements-dev.txt
-python -m pytest automation-api/tests
+cd automation-api
+python -m pytest
 ```
 
 ## Security notes
@@ -399,6 +433,33 @@ python -m pytest automation-api/tests
 - Alert payloads and captured playbook output may contain sensitive data; keep
   the local SQLite audit database protected and do not include secrets in
   alerts.
+- GitHub webhook secrets are separate from the API token. Signature checking
+  and repository/branch allowlists reduce spoofing risk but do not make a
+  development server suitable for public exposure.
+
+## Troubleshooting
+
+- **Ansible says the inventory is empty or ignores `ansible.cfg`:** run from
+  WSL and set inventory/`roles_path` in WSL's `~/.ansible.cfg`; Windows-mounted
+  directories are treated as world-writable.
+- **Ansible reports SSH timeout:** check that the VM is running and its
+  host-only address matches `inventory.yml`; test from Windows with
+  `Test-NetConnection <vm-ip> -Port 22`.
+- **Ansible reports `Permission denied (publickey)`:** refresh the WSL key copy
+  from `.vagrant/machines/<host>/virtualbox/private_key` with mode `600`.
+- **A role cannot find its files:** check that each role is under
+  `roles/<role-name>/tasks/main.yml` and that `roles_path` points to this
+  checkout.
+- **Alertmanager cannot reach the API:** Uvicorn must be listening on WSL
+  interfaces, the Windows port-forward must point to the current WSL IP, and
+  the API token copied by Ansible must match the running API token.
+- **No auto-remediation is queued:** remediation is opt-in, handles only
+  firing `NodeExporterDown` alerts for known inventory targets, and is subject
+  to a ten-minute cooldown. It cannot recover an unreachable VM.
+- **GitHub events are rejected:** check the webhook HMAC secret, exact
+  `owner/repository` allowlist, configured branch, and delivery event type.
+  GitHub.com also needs reachable HTTPS ingress; the local VM forwarding rule
+  is not public ingress.
 
 ## Learning roadmap
 

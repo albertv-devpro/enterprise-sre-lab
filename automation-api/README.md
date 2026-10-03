@@ -1,29 +1,35 @@
 # Enterprise SRE Automation API
 
-A local self-service API for starting a small, allowlisted set of this lab's
-Ansible plays and recording Alertmanager webhook events. It is intended for
-development on the WSL control node, not as a production API gateway.
+A local FastAPI service for approved Ansible runs, Alertmanager incidents, and
+signed GitHub push notifications. It is a learning tool for the WSL control
+node, not a production API gateway.
 
-## Security and scope
+## Security and behavior
 
-- The server binds to `127.0.0.1` for local use. For the VM Alertmanager
-  integration, bind Uvicorn to `0.0.0.0` only while Windows port forwarding
-  is enabled; the included firewall rule permits only `monitoring01`.
-- Mutating and audit endpoints accept the `X-API-Key` header. Alertmanager
-  sends the same secret as an HTTP Bearer token. Keep it out of source control
-  and shell history.
-- Deployment requests accept only the fixed targets `baseline`,
-  `node_exporter`, `webserver`, `observability`, and `all`; they cannot supply
-  shell commands, inventory paths, or playbook paths.
-- Playbook output and alert payloads are stored in a local SQLite audit
-  database under `$XDG_STATE_HOME` or `~/.local/state`. The database is created
-  with owner-only permissions where the filesystem supports POSIX modes.
-- Jobs run in-process and are serialized. The audit is persistent, but queued
-  work is not resumed if the API process stops; run a single Uvicorn worker.
-- Treat saved output and alert payloads as potentially sensitive. Do not put
-  secrets in alerts or playbook output.
-- Alert webhooks are recorded as incidents only. This API does not perform
-  automatic remediation.
+- Bind to `127.0.0.1` for local use. The VM webhook setup requires binding to
+  `0.0.0.0` in WSL and using the included Windows port-forward script, whose
+  firewall rule allows only `monitoring01`.
+- Deployment and ticket endpoints require `X-API-Key`. Alertmanager accepts
+  the same API token as an HTTP Bearer token.
+- GitHub pushes use a separate `GITHUB_WEBHOOK_SECRET`, verified against
+  `X-Hub-Signature-256`. Only the configured repository and branch are
+  accepted.
+- Deployment targets are allowlisted; callers cannot provide shell commands,
+  inventory paths, playbook paths, or arbitrary Ansible limits.
+- Alert-driven remediation is disabled by default. When enabled, only firing
+  `NodeExporterDown` alerts for a known inventory host can queue the
+  `node_exporter` role for that host. A persistent ten-minute per-host
+  cooldown prevents repeated runs.
+- Remediation only reapplies the Node Exporter package/service role. It cannot
+  repair an unreachable VM, host, or network.
+- The GitHub endpoint runs the full playbook using the API server's existing
+  checkout. It does **not** fetch or check out the commit from GitHub.
+- Jobs run sequentially in-process. Audit records persist in SQLite, but queued
+  jobs do not survive API process shutdown. Run one Uvicorn worker.
+- Audit payloads and captured Ansible output may contain sensitive data.
+  SQLite is stored under `$XDG_STATE_HOME` or `~/.local/state`.
+- Alert events create audit records only, except for the explicitly enabled
+  and constrained Node Exporter remediation policy.
 
 ## Install and run in WSL
 
@@ -43,22 +49,37 @@ export AUTOMATION_API_TOKEN="$(python -c 'import secrets; print(secrets.token_ur
 printf '%s' "$AUTOMATION_API_TOKEN" \
   > "$HOME/.config/enterprise-sre-automation/api-token"
 chmod 600 "$HOME/.config/enterprise-sre-automation/api-token"
+```
 
+Start for local-only API use:
+
+```bash
 uvicorn --app-dir automation-api main:app --host 127.0.0.1 --port 5000
 ```
 
-Keep this terminal running. Open another WSL terminal and load the token:
+In a second WSL terminal:
 
 ```bash
 export AUTOMATION_API_TOKEN="$(cat "$HOME/.config/enterprise-sre-automation/api-token")"
 curl -sS http://127.0.0.1:5000/healthz
 ```
 
-The API runner uses the fixed project inventory and playbook. Ensure the WSL
-Ansible config at `~/.ansible.cfg` has a `roles_path` pointing to this project's
-`roles/` directory.
+The API runner uses this repository's fixed inventory and playbook. Ensure
+`~/.ansible.cfg` in WSL includes a `roles_path` for this checkout.
 
-## Try the API
+## API endpoints
+
+| Method | Path | Authentication | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/healthz` | None | Health check |
+| `POST` | `/api/v1/deployments` | `X-API-Key` | Queue an approved Ansible target |
+| `POST` | `/api/v1/webhooks/alertmanager` | Bearer token or `X-API-Key` | Record alerts; optionally queue guarded remediation |
+| `POST` | `/api/v1/webhooks/github` | GitHub HMAC signature | Queue an allowlisted push sync |
+| `GET` | `/api/v1/tickets` | `X-API-Key` | List audit records |
+| `GET` | `/api/v1/tickets/{ticket_id}` | `X-API-Key` | Inspect a deployment or incident |
+
+Approved deployment targets are `baseline`, `node_exporter`, `webserver`,
+`observability`, and `all`.
 
 Queue an idempotent webserver role run:
 
@@ -69,7 +90,7 @@ curl -sS -X POST http://127.0.0.1:5000/api/v1/deployments \
   -d '{"target":"webserver"}'
 ```
 
-The response includes a `ticket_id`. Poll its status and bounded output:
+Use its returned ticket ID to inspect status and bounded Ansible output:
 
 ```bash
 curl -sS \
@@ -77,31 +98,10 @@ curl -sS \
   http://127.0.0.1:5000/api/v1/tickets/CHG-your-ticket-id
 ```
 
-List recent deployment and alert records:
+## Alertmanager and guarded remediation
 
-```bash
-curl -sS \
-  -H "X-API-Key: $AUTOMATION_API_TOKEN" \
-  'http://127.0.0.1:5000/api/v1/tickets?limit=50'
-```
-
-Submit an Alertmanager-compatible example event:
-
-```bash
-curl -sS -X POST http://127.0.0.1:5000/api/v1/webhooks/alertmanager \
-  -H "Authorization: Bearer $AUTOMATION_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"receiver":"lab-webhook","status":"firing","alerts":[{"status":"firing","labels":{"alertname":"ExampleAlert","instance":"web01:9100"},"annotations":{"summary":"Example test alert"}}]}'
-```
-
-## Connect Alertmanager in the monitoring VM
-
-Alertmanager runs inside `monitoring01`; its `127.0.0.1` is the VM, not WSL.
-The role sends webhook requests to the Windows VirtualBox host-only address
-`192.168.56.1`. The port-forward script points that address at the current
-WSL IPv4 address and restricts the Windows firewall rule to `monitoring01`.
-
-Start the API bound to all WSL interfaces from the project root:
+Alertmanager runs in `monitoring01`; its `127.0.0.1` is not WSL. For VM
+webhooks, start the API on all WSL interfaces:
 
 ```bash
 source "$HOME/.venvs/enterprise-sre-automation-api/bin/activate"
@@ -109,40 +109,101 @@ export AUTOMATION_API_TOKEN="$(cat "$HOME/.config/enterprise-sre-automation/api-
 uvicorn --app-dir automation-api main:app --host 0.0.0.0 --port 5000
 ```
 
-In an **elevated Windows PowerShell** window, configure the restricted
-forwarding rule (rerun after WSL restarts if its IP address changes):
+From elevated Windows PowerShell, set the host-only port forwarding. Replace
+the project directory with your own checkout location if needed:
 
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -File "$env:USERPROFILE\enterprise-sre-lab\automation-api\windows-portproxy.ps1"
 ```
 
-With the API running, deploy the Prometheus rules and Alertmanager receiver:
+Apply Prometheus alert rules and the Alertmanager receiver from WSL:
 
 ```bash
 ansible-playbook playbooks/site.yml --tags observability
 ```
 
-Alert events are recorded only; no alert triggers automated remediation. To
-test the webhook manually from WSL, use the same Bearer-token authentication
-as Alertmanager:
+The forwarding script targets the current WSL IPv4 address; rerun it after a
+WSL restart if that address changes. The host-only forwarding/firewall is not
+public internet ingress.
+
+Remediation is opt-in. Stop Uvicorn, then set this variable before restarting
+it:
+
+```bash
+export AUTO_REMEDIATION_ENABLED=true
+```
+
+The policy matches only firing `NodeExporterDown` alerts whose `instance`
+contains a known inventory IP or hostname. To manually test using `db01`:
 
 ```bash
 curl -sS -X POST http://127.0.0.1:5000/api/v1/webhooks/alertmanager \
   -H "Authorization: Bearer $AUTOMATION_API_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"receiver":"sre-api-webhook","status":"firing","alerts":[{"status":"firing","labels":{"alertname":"NodeExporterDown","instance":"db01:9100","severity":"critical"},"annotations":{"summary":"Simulated webhook test"}}]}'
+  -d '{"receiver":"sre-api-webhook","status":"firing","alerts":[{"status":"firing","labels":{"alertname":"NodeExporterDown","instance":"192.168.56.32:9100","severity":"critical"},"annotations":{"summary":"Manual remediation policy test"}}]}'
 
 curl -sS \
   -H "X-API-Key: $AUTOMATION_API_TOKEN" \
   'http://127.0.0.1:5000/api/v1/tickets?limit=20'
 ```
 
-Interactive API documentation is available at `http://127.0.0.1:5000/docs`.
+Inspect the incident's `remediation` details and final status. The test may
+reinstall/restart Node Exporter on `db01`. A per-host cooldown blocks another
+attempt for ten minutes, including failed attempts.
+
+## GitHub push webhook
+
+Configure a dedicated webhook secret and repository allowlist in the API
+process environment:
+
+```bash
+export GITHUB_WEBHOOK_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
+export GITOPS_REPOSITORY="your-owner/enterprise-sre-lab"
+export GITOPS_BRANCH=main
+```
+
+Set the same secret in the GitHub webhook settings, choose **application/json**
+and subscribe to **push** events. The endpoint verifies the HMAC signature and
+queues a full playbook run only for the exact configured `owner/repository` and
+branch. The API server must already have the intended code checked out; this
+endpoint does not synchronize Git itself.
+
+The current Windows port-forward/firewall permits only `monitoring01`; GitHub
+cannot reach that private address. A real GitHub.com webhook needs separately
+managed, authenticated HTTPS ingress and should not be implemented by exposing
+this development API directly to the public internet. Until then, exercise the
+HMAC/repository behavior with the automated tests.
 
 ## Tests
 
 ```bash
-cd automation-api
-python -m pip install -r requirements-dev.txt
-python -m pytest
+source "$HOME/.venvs/enterprise-sre-automation-api/bin/activate"
+python -m pip install -r automation-api/requirements-dev.txt
+python -m pytest automation-api/tests
 ```
+
+Tests cover authenticated deployment requests, alert recording, safe
+remediation targeting and cooldown, signed webhook verification, repository
+allowlisting, and playbook argument construction.
+
+## Troubleshooting
+
+- **`401` from the Alertmanager webhook:** confirm Uvicorn has the same
+  `AUTOMATION_API_TOKEN` copied to `/etc/alertmanager/api-token` by the
+  observability role. Reapply `--tags observability` after changing the token.
+- **No remediation queued:** confirm `AUTO_REMEDIATION_ENABLED=true`, restart
+  Uvicorn, and use a `firing` `NodeExporterDown` alert with an inventory
+  hostname/IP. Check the incident's remediation details for cooldown status.
+- **Remediation fails:** inspect the ticket output. Ansible requires the VM to
+  be reachable over SSH; remediation cannot fix host/network outages.
+- **GitHub webhook returns `503`:** configure both `GITHUB_WEBHOOK_SECRET` and
+  `GITOPS_REPOSITORY` before starting Uvicorn.
+- **GitHub webhook returns `401` or `403`:** confirm the GitHub secret matches,
+  the signed body is unchanged, and the repository is configured as
+  `owner/name`.
+- **VM cannot connect to the API:** ensure Uvicorn is listening on `0.0.0.0`,
+  rerun the elevated Windows port-forward script after WSL restarts, and test
+  `http://192.168.56.1:5000/healthz` from `monitoring01`.
+- **Playbook can't find roles or inventory:** set `roles_path` and inventory in
+  WSL's Linux-side `~/.ansible.cfg`; Ansible ignores project config on
+  world-writable Windows mounts.

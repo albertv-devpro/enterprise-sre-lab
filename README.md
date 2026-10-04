@@ -128,8 +128,7 @@ current checkout. It does not fetch or check out the push commit.
 │   ├── tests/
 │   ├── windows-portproxy.ps1   # Windows-to-WSL forwarding setup
 │   └── requirements*.txt
-└── configs/
-    └── prometheus.yml          # Example/static config; role template is deployed
+└── ...
 ```
 
 ## Prerequisites
@@ -304,6 +303,38 @@ development CA on `monitoring01` for Alertmanager's HTTPS webhook. Grafana
 anonymous access is disabled and viewers cannot edit dashboards; Grafana OSS
 provides built-in Viewer/Editor/Admin roles, while fine-grained RBAC depends on
 edition.
+
+### How Prometheus and Grafana fit together
+
+Node Exporter runs on each VM and exposes operating-system metrics on port
+`9100`. Ansible's `monitoring` role installs and starts that exporter on all
+inventory hosts. Prometheus runs on `monitoring01`; its scrape configuration
+tells it which exporters to query, and Prometheus stores the returned time
+series and evaluates alert rules.
+
+The source of truth for the Prometheus scrape configuration is
+`roles/observability/templates/prometheus.yml.j2`. The observability role
+renders this Jinja template with host addresses from `inventory.yml` and
+deploys the result to `/etc/prometheus/prometheus.yml` on `monitoring01`. It
+also deploys alert rules from
+`roles/observability/templates/node-alerts.yml.j2` to
+`/etc/prometheus/rules/node-alerts.yml`. Before deploying, Ansible validates
+the rendered Prometheus configuration and rules with `promtool`; if either
+changes, it restarts Prometheus using the handler in
+`roles/observability/handlers/main.yml`.
+
+Grafana runs on the same monitoring VM, but has a different job: it queries
+Prometheus and turns the metrics into graphs, stat panels, and dashboards.
+Grafana does not scrape exporters and does not read `prometheus.yml`. Its
+service and access settings are managed by the observability role in
+`/etc/grafana/grafana.ini`; the role disables anonymous access and prevents
+Viewer users from editing dashboards. The Prometheus data source and dashboards
+are currently created in Grafana's web UI, not provisioned by Ansible.
+
+In short: **Node Exporter exposes metrics → Prometheus scrapes and stores them
+→ Grafana queries Prometheus and displays them.** Prometheus configuration and
+alert rules are managed as repository templates; Grafana's data source and
+dashboards currently live in Grafana's local state on `monitoring01`.
 
 ## Validate Prometheus and build Grafana dashboards
 
@@ -600,6 +631,113 @@ The script creates a local development CA and server certificate outside the
 repository in `~/.config/enterprise-sre-automation/tls`, with SANs for
 `localhost`, `127.0.0.1`, and `192.168.56.1`. Keep `lab-ca.key` private; only
 the public CA certificate is deployed to the VM.
+
+### Why the API uses TLS
+
+TLS is what makes an HTTP connection use HTTPS. It encrypts traffic in transit
+and lets the client verify that it is talking to the server named in the
+certificate. Here, TLS protects API requests and responses—including the API
+token and Alertmanager webhook payload—as they travel between WSL, Windows'
+host-only forward, and `monitoring01`. The API token authenticates requests;
+TLS protects that token while it is being sent. They address different risks
+and are both needed for this webhook path.
+
+This lab uses a private, self-signed development CA rather than a publicly
+trusted certificate. The API client trusts that CA using `--cacert`, and
+Ansible installs only the public CA certificate on `monitoring01` so
+Alertmanager can verify the API. The CA private key (`lab-ca.key`) must remain
+secret; it is used to sign certificates and is never deployed to a VM. The
+certificate generator includes the local addresses used by this lab. If the
+API address changes, the certificate must include that address and the
+Alertmanager trust configuration must be updated.
+
+#### How the lab certificate is generated
+
+Run the repository script from the project root in WSL after creating the API
+token:
+
+```bash
+bash automation-api/generate-dev-certs.sh
+```
+
+The script uses OpenSSL to create a private development CA key and certificate,
+then an API server key and a certificate signed by that CA. The server
+certificate includes the lab DNS/IP subject alternative names and is valid for
+up to 397 days; the CA is valid for ten years. Files are written outside the
+repository under
+`$HOME/.config/enterprise-sre-automation/tls` (or under `$XDG_CONFIG_HOME` if
+set). The script refuses to overwrite existing TLS material. Keep
+`lab-ca.key` and `api.key` private; only `lab-ca.crt` is copied to
+`monitoring01`.
+
+Inspect the server certificate's names and validity, and verify its signature
+against the local CA:
+
+```bash
+TLS_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/enterprise-sre-automation/tls"
+openssl x509 -in "$TLS_DIR/api.crt" -noout -subject -issuer -dates -ext subjectAltName
+openssl verify -CAfile "$TLS_DIR/lab-ca.crt" "$TLS_DIR/api.crt"
+```
+
+The verification command should report `api.crt: OK`. Clients use the CA
+certificate to validate the server; do not use `curl -k` as a substitute,
+because that disables certificate verification.
+
+TLS is configured on the FastAPI server by starting Uvicorn with its
+certificate and private key. The certificate authority does not encrypt or
+authenticate the Prometheus or Grafana web interfaces: in this lab those UIs
+still use HTTP on the private host-only network. Do not expose them or the
+development API directly to an untrusted network. A real internet-facing
+deployment needs a properly secured HTTPS ingress and certificates trusted by
+its clients.
+
+#### Production TLS and ingress caveat
+
+The certificates above are **not production certificates**. A private lab CA
+is trusted only by clients where you explicitly install it, and the WSL,
+SQLite, in-process-queue API in this repository is a development service, not a
+production automation gateway. Do not make the lab API or port `5000` public
+by copying the example below. A real deployment first needs a hardened API
+service on a supported host/platform, durable job processing, managed secrets,
+restricted deployment permissions, and reviewed authorization, audit, and
+recovery controls.
+
+For a properly hardened deployment with a public DNS name such as
+`api.example.com`, a common pattern is to put a reverse proxy such as Caddy in
+front of an API bound only to localhost. Point DNS to the proxy host and allow
+inbound ports `80` and `443` there. Caddy can obtain and renew a publicly
+trusted certificate automatically. For example, configure its site in
+`/etc/caddy/Caddyfile`:
+
+```caddyfile
+api.example.com {
+    reverse_proxy 127.0.0.1:5000
+}
+```
+
+After installing Caddy on that host, validate and reload the configuration:
+
+```bash
+sudo caddy validate --config /etc/caddy/Caddyfile
+sudo systemctl reload caddy
+```
+
+Run the API service bound to localhost behind the proxy, without Uvicorn's
+`--ssl-*` options because Caddy terminates public TLS:
+
+```bash
+uvicorn --app-dir automation-api main:app --host 127.0.0.1 --port 5000
+```
+
+In production, run the API under a hardened service manager or platform rather
+than leaving it in an interactive terminal. Permit public inbound traffic only
+to the proxy on ports `80` and `443`; do not expose port `5000`. Configure
+GitHub to deliver to
+`https://api.example.com/api/v1/webhooks/github` with a strong, separately
+managed webhook secret. Caddy's automatic certificate flow requires a real
+public DNS name and the proxy host to be reachable for certificate issuance.
+These commands illustrate TLS termination only; they do not make this lab API
+production-ready.
 
 For **local API use and manual requests**, bind to WSL localhost using TLS:
 

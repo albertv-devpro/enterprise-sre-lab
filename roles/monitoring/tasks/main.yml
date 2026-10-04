@@ -11,6 +11,41 @@
     state: present
   when: ansible_facts['os_family'] == 'RedHat'
 
+- name: Install firewalld on Red Hat-family hosts
+  ansible.builtin.package:
+    name: firewalld
+    state: present
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: Ensure firewalld is enabled and running on Red Hat-family hosts
+  ansible.builtin.service:
+    name: firewalld
+    state: started
+    enabled: true
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: Check whether monitoring01 can scrape Node Exporter
+  ansible.builtin.command:
+    argv:
+      - firewall-cmd
+      - --permanent
+      - --query-rich-rule=rule family=ipv4 source address={{ hostvars[groups['monitoring'][0]]['ansible_host'] }}/32 port protocol=tcp port=9100 accept
+  register: node_exporter_firewall_rule
+  changed_when: false
+  failed_when: node_exporter_firewall_rule.rc not in [0, 1]
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: Allow monitoring01 to scrape Node Exporter
+  ansible.builtin.command:
+    argv:
+      - firewall-cmd
+      - --permanent
+      - --add-rich-rule=rule family=ipv4 source address={{ hostvars[groups['monitoring'][0]]['ansible_host'] }}/32 port protocol=tcp port=9100 accept
+  when:
+    - ansible_facts['os_family'] == 'RedHat'
+    - node_exporter_firewall_rule.rc == 1
+  notify: Reload firewalld
+
 - name: Ensure the Debian Node Exporter service is enabled and running
   ansible.builtin.service:
     name: prometheus-node-exporter

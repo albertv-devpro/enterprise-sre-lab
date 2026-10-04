@@ -526,19 +526,9 @@ ansible-playbook playbooks/site.yml
 ```
 
 This installs Node Exporter, the web server, Prometheus, Alertmanager, and
-Grafana. The Ansible role currently does not manage the Rocky Linux
-`firewalld` exception for exporter scraping. If `app01` or `db01` was
-recreated, add the persistent rule allowing only `monitoring01` to scrape
-port `9100` (run from Git Bash in the project directory):
-
-```bash
-for host in app01 db01; do
-  vagrant ssh "$host" -c 'sudo firewall-cmd --permanent --add-rich-rule="rule family=ipv4 source address=192.168.56.33/32 port protocol=tcp port=9100 accept" && sudo firewall-cmd --reload'
-done
-```
-
-The rule survives VM reboots, but not destruction/recreation. It is safe to run
-again if the rule already exists.
+Grafana. On Rocky Linux hosts, the Node Exporter role also ensures `firewalld`
+is running and persistently allows TCP port `9100` only from the monitoring
+host. This rule is reapplied automatically when `app01` or `db01` is recreated.
 
 ### Restart the API and restore the Alertmanager connection
 

@@ -328,19 +328,20 @@ Prometheus and turns the metrics into graphs, stat panels, and dashboards.
 Grafana does not scrape exporters and does not read `prometheus.yml`. Its
 service and access settings are managed by the observability role in
 `/etc/grafana/grafana.ini`; the role disables anonymous access and prevents
-Viewer users from editing dashboards. The Prometheus data source and dashboards
-are currently created in Grafana's web UI, not provisioned by Ansible.
+Viewer users from editing dashboards. Ansible also provisions Prometheus as
+Grafana's default data source and installs the **Enterprise SRE Lab** dashboard.
 
 In short: **Node Exporter exposes metrics → Prometheus scrapes and stores them
 → Grafana queries Prometheus and displays them.** Prometheus configuration and
-alert rules are managed as repository templates; Grafana's data source and
-dashboards currently live in Grafana's local state on `monitoring01`.
+alert rules, plus Grafana's data source and dashboard, are managed as
+repository files and reapplied by Ansible.
 
 ## Validate Prometheus and build Grafana dashboards
 
 These steps assume the VMs are running and the observability play has been
-applied. The dashboards below are created in Grafana's UI; this repository
-does not currently provision dashboards or a Grafana data source with Ansible.
+applied. Ansible provisions the Prometheus data source and the **Enterprise SRE
+Lab** dashboard automatically. Use the following UI steps to verify them and,
+if desired, create additional dashboards manually.
 
 ### 1. Verify Prometheus
 
@@ -367,27 +368,60 @@ Open Prometheus from Windows at <http://192.168.56.33:9090>.
    Expect `4`. If a target is down, open **Status → Targets** and inspect its
    last scrape error before troubleshooting the VM, exporter, or firewall.
 
-### 2. Connect Grafana to Prometheus
+### 2. Verify Grafana's Prometheus data source
 
 Open Grafana at <http://192.168.56.33:3000> and sign in with the Grafana admin
 account. Grafana disables anonymous access, so sign-in is required.
 
-1. Open **Connections → Data sources** and choose **Add data source → Prometheus**.
-2. Set the Prometheus server URL to `http://localhost:9090`. Grafana runs on
-   `monitoring01`, so `localhost` here refers to that VM, not your Windows
-   browser.
-3. Select **Save & test** and confirm Grafana can connect.
+Open **Connections → Data sources → Prometheus**. Ansible configures its
+server URL as `http://localhost:9090` and makes it the default data source.
+Grafana runs on `monitoring01`, so `localhost` refers to that VM, not your
+Windows browser. Run the data-source connection test if shown.
 
-If a Prometheus data source already exists, open it and verify its URL and
-connection test instead of creating a duplicate.
+### 3. Open the provisioned fleet dashboard
 
-### 3. Create three beginner-friendly dashboards
+Open **Dashboards → Browse → Enterprise SRE Lab → Enterprise SRE Lab - Fleet
+Overview**. Its panels show exporter availability and per-host status, host
+uptime, CPU and memory use, root filesystem use, system load averages, network
+throughput, disk I/O, and firing alert details. Use its **Host** variable to
+filter panels to one VM or all hosts. Prometheus should return four exporter
+series when **All** is selected and all hosts are healthy.
 
-In Grafana, select **Dashboards → New → New dashboard → Add visualization**,
-choose the Prometheus data source, and enter each query in the query editor's
-code mode. Set the panel title and visualization type, then select **Apply**.
-Repeat for the listed panels and save each dashboard. The exact button labels
-can vary slightly by Grafana version.
+The dashboard JSON is version-controlled at
+`roles/observability/files/enterprise-sre-lab-dashboard.json`. The data-source
+and dashboard-provider definitions are in
+`roles/observability/templates/grafana-prometheus-datasource.yml.j2` and
+`roles/observability/templates/grafana-dashboards.yml.j2`. Run
+`ansible-playbook playbooks/site.yml --tags observability` to provision or
+reapply them.
+
+Provisioned dashboards are managed from the repository and are read-only in
+Grafana; change the JSON and rerun Ansible to make edits. Additional dashboards
+can still be created manually from **Dashboards → New → New dashboard**.
+
+### 4. Optional: create additional beginner dashboards
+
+The provisioned **Enterprise SRE Lab - Fleet Overview** dashboard is read-only
+because Ansible owns its JSON file. To learn by building your own dashboard,
+create a separate one in Grafana:
+
+1. Open **Dashboards → New → New dashboard**, then select **Add visualization**.
+2. Select the **Prometheus** data source. In the query editor, switch to **Code**
+   mode and enter one of the PromQL expressions below.
+3. In the panel options, set a clear **Title** and choose a visualization such
+   as **Time series**, **Stat**, or **Table**. For percentage metrics, choose
+   **Standard options → Unit → Percent (0-100)**. For time-series metrics, set
+   the legend to `{{instance}}` to identify each VM.
+4. Select **Apply** to add the panel to the dashboard. To add another panel,
+   use **Add → Visualization** and repeat the process.
+5. When finished, select **Save dashboard**, enter a name such as
+   `My SRE Lab Dashboard`, choose a folder, and save. Reopen it from
+   **Dashboards → Browse**.
+
+Start with one query and confirm it returns data before adding more panels. If a
+panel says **No data**, first run its query in **Explore** with the Prometheus
+data source selected. Check that the metric exists and that any label filters,
+such as `job="enterprise-nodes"` or `mountpoint="/"`, match the returned series.
 
 For CPU, memory, and filesystem panels, set **Standard options → Unit** to
 **Percent (0-100)** and set the legend to `{{instance}}` where the query returns
@@ -395,7 +429,10 @@ one series per host. A useful starting point for thresholds is warning at 80%
 and critical at 90%; adjust these to suit the lab rather than treating them as
 universal production thresholds.
 
-**Dashboard 1: Fleet overview**
+**Dashboard idea 1: Fleet overview**
+
+Create a separate dashboard called **My SRE Lab - Fleet**, then add panels
+using the queries below:
 
 | Panel | Visualization | Prometheus query | Expected result |
 | --- | --- | --- | --- |
@@ -404,13 +441,13 @@ universal production thresholds.
 | CPU used | Time series | `100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{job="enterprise-nodes",mode="idle"}[5m])))` | Percent per host |
 | Memory used | Time series | `100 * (1 - node_memory_MemAvailable_bytes{job="enterprise-nodes"} / node_memory_MemTotal_bytes{job="enterprise-nodes"})` | Percent per host |
 
-Save this as **Enterprise SRE Lab - Fleet**. The status panel uses values `1`
+The status panel uses values `1`
 for up and `0` for down; optionally configure value mappings to display these
 as **UP** and **DOWN**.
 
-**Dashboard 2: Host resources**
+**Dashboard idea 2: Host resources**
 
-Create a second dashboard named **Enterprise SRE Lab - Host Resources**. Add
+Create another dashboard called **My SRE Lab - Host Resources**, then add
 these time-series panels:
 
 | Panel | Prometheus query | Unit |
@@ -424,9 +461,9 @@ inspect `node_filesystem_size_bytes{job="enterprise-nodes"}` in Explore to see
 the mount points and filesystem types exported by the hosts, then adapt the
 root mount filter accordingly.
 
-**Dashboard 3: Alerts and monitoring health**
+**Dashboard idea 3: Alerts and monitoring health**
 
-Create a third dashboard named **Enterprise SRE Lab - Alerts**. Add these
+Create another dashboard called **My SRE Lab - Alerts**, then add these
 panels:
 
 | Panel | Visualization | Prometheus query | Expected result |
@@ -440,10 +477,10 @@ For the alert table, the `ALERTS` series includes labels such as `alertname`,
 desired. A pending alert may appear before it fires, depending on its configured
 duration.
 
-Save each dashboard as you create it. Grafana stores these dashboards on
-`monitoring01`; they survive a normal VM halt but are lost if that VM is
-destroyed. They are not currently backed up or recreated automatically by
-Ansible.
+Save manually created dashboards as you create them. They live in Grafana's
+local database on `monitoring01`, survive a normal VM halt, and are lost if
+that VM is destroyed. Unlike the provisioned Enterprise SRE Lab dashboard,
+manual dashboards are not backed up or recreated automatically by Ansible.
 
 ## Restart the lab after downtime
 

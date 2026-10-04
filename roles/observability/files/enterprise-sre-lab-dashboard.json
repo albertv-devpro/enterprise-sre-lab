@@ -1,0 +1,951 @@
+{
+  "__requires": [
+    {
+      "type": "grafana",
+      "id": "grafana",
+      "name": "Grafana",
+      "version": "10.0.0"
+    },
+    {
+      "type": "panel",
+      "id": "timeseries",
+      "name": "Time series",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "stat",
+      "name": "Stat",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "table",
+      "name": "Table",
+      "version": ""
+    }
+  ],
+  "annotations": {
+    "list": []
+  },
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 100
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "100 * sum(up{job=\"enterprise-nodes\",instance=~\"$instance\"}) / count(up{job=\"enterprise-nodes\",instance=~\"$instance\"})",
+          "legendFormat": "Availability",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "description": "Percentage of selected Node Exporter targets Prometheus can currently scrape. 100% means all selected hosts are up.",
+      "title": "Exporter availability",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "text": "DOWN"
+                },
+                "1": {
+                  "text": "UP"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "id": 2,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "up{job=\"enterprise-nodes\",instance=~\"$instance\"}",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "description": "Current Prometheus scrape status for each selected host. A value of 1 means the exporter is reachable; 0 means its scrape is failing.",
+      "title": "Exporter status by host (1 = UP, 0 = DOWN)",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "Value": "Status",
+              "instance": "Host",
+              "job": "Job"
+            }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 10
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{job=\"enterprise-nodes\",mode=\"idle\",instance=~\"$instance\"}[5m])))",
+          "legendFormat": "{{instance}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "description": "CPU utilization across all logical cores, calculated from the rate of idle CPU time. Orange and red thresholds are visual guides; the Prometheus alert fires above 80% for five minutes.",
+      "title": "CPU used",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 10
+      },
+      "id": 4,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "100 * (1 - node_memory_MemAvailable_bytes{job=\"enterprise-nodes\",instance=~\"$instance\"} / node_memory_MemTotal_bytes{job=\"enterprise-nodes\",instance=~\"$instance\"})",
+          "legendFormat": "{{instance}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "description": "Estimated memory in use, calculated as total memory minus memory available to applications.",
+      "title": "Memory used",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 18
+      },
+      "id": 5,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "100 * (1 - node_filesystem_avail_bytes{job=\"enterprise-nodes\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\",instance=~\"$instance\"} / node_filesystem_size_bytes{job=\"enterprise-nodes\",mountpoint=\"/\",fstype!~\"tmpfs|overlay\",instance=~\"$instance\"})",
+          "legendFormat": "{{instance}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "description": "Percentage of the root filesystem in use. Temporary and overlay filesystems are excluded.",
+      "title": "Root filesystem used",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 0
+      },
+      "id": 6,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "count(ALERTS{alertstate=\"firing\"}) or vector(0)",
+          "legendFormat": "Firing alerts",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "description": "Count of alerts currently in the firing state. Zero means no alert is firing.",
+      "title": "Firing alerts",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 34
+      },
+      "id": 7,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "ALERTS{alertname=~\"NodeExporterDown|NodeHighCPUUsage\",alertstate=\"firing\"}",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "description": "Details for firing NodeExporterDown and NodeHighCPUUsage alerts. This table is empty when neither alert is firing.",
+      "title": "Firing alert details",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Elapsed time since each host last booted. A low value may indicate a recent restart.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 0
+      },
+      "id": 8,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": true
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "node_time_seconds{job=\"enterprise-nodes\",instance=~\"$instance\"} - node_boot_time_seconds{job=\"enterprise-nodes\",instance=~\"$instance\"}",
+          "legendFormat": "{{instance}}",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Host uptime",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Load average over 1, 5, and 15 minutes. Load average is not a CPU percentage; interpret it relative to the host's vCPU count.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Runnable or waiting tasks",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 18
+      },
+      "id": 9,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "node_load1{job=\"enterprise-nodes\",instance=~\"$instance\"}",
+          "legendFormat": "1m {{instance}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "node_load5{job=\"enterprise-nodes\",instance=~\"$instance\"}",
+          "legendFormat": "5m {{instance}}",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "editorMode": "code",
+          "expr": "node_load15{job=\"enterprise-nodes\",instance=~\"$instance\"}",
+          "legendFormat": "15m {{instance}}",
+          "range": true,
+          "refId": "C"
+        }
+      ],
+      "title": "System load average",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Network receive and transmit throughput. Loopback and common container virtual interfaces are excluded.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Bytes per second",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 26
+      },
+      "id": 10,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum by (instance) (rate(node_network_receive_bytes_total{job=\"enterprise-nodes\",device!~\"lo|docker.*|veth.*\",instance=~\"$instance\"}[5m]))",
+          "legendFormat": "Receive {{instance}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sum by (instance) (rate(node_network_transmit_bytes_total{job=\"enterprise-nodes\",device!~\"lo|docker.*|veth.*\",instance=~\"$instance\"}[5m]))",
+          "legendFormat": "Transmit {{instance}}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Network throughput",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Disk read and write throughput, aggregated by host and excluding loop and RAM devices.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "Bytes per second",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 26
+      },
+      "id": 11,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum by (instance) (rate(node_disk_read_bytes_total{job=\"enterprise-nodes\",device!~\"loop.*|ram.*\",instance=~\"$instance\"}[5m]))",
+          "legendFormat": "Read {{instance}}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "sum by (instance) (rate(node_disk_written_bytes_total{job=\"enterprise-nodes\",device!~\"loop.*|ram.*\",instance=~\"$instance\"}[5m]))",
+          "legendFormat": "Write {{instance}}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Disk I/O throughput",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": [
+    "enterprise-sre-lab",
+    "prometheus"
+  ],
+  "templating": {
+    "list": [
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "definition": "label_values(up{job=\"enterprise-nodes\"}, instance)",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Host",
+        "multi": false,
+        "name": "instance",
+        "options": [],
+        "query": {
+          "query": "label_values(up{job=\"enterprise-nodes\"}, instance)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 1,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "description": "Fleet health and resource overview for the Enterprise SRE Lab. Metrics are collected by Node Exporter and scraped by Prometheus.",
+  "title": "Enterprise SRE Lab - Fleet Overview",
+  "uid": "enterprise-sre-lab",
+  "version": 1,
+  "weekStart": ""
+}

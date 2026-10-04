@@ -151,6 +151,45 @@
     state: started
     enabled: true
 
+- name: Create Grafana provisioning directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: grafana
+    group: grafana
+    mode: '0755'
+  loop:
+    - /etc/grafana/provisioning/datasources
+    - /etc/grafana/provisioning/dashboards
+    - /var/lib/grafana/dashboards/enterprise-sre-lab
+
+- name: Provision Prometheus as Grafana's default data source
+  ansible.builtin.template:
+    src: grafana-prometheus-datasource.yml.j2
+    dest: /etc/grafana/provisioning/datasources/prometheus.yml
+    owner: root
+    group: grafana
+    mode: '0640'
+  notify: Restart Grafana
+
+- name: Provision Enterprise SRE Lab dashboard provider
+  ansible.builtin.template:
+    src: grafana-dashboards.yml.j2
+    dest: /etc/grafana/provisioning/dashboards/enterprise-sre-lab.yml
+    owner: root
+    group: grafana
+    mode: '0640'
+  notify: Restart Grafana
+
+- name: Provision Enterprise SRE Lab fleet dashboard
+  ansible.builtin.copy:
+    src: enterprise-sre-lab-dashboard.json
+    dest: /var/lib/grafana/dashboards/enterprise-sre-lab/fleet-overview.json
+    owner: grafana
+    group: grafana
+    mode: '0644'
+  notify: Restart Grafana
+
 - name: Disable anonymous Grafana access
   ansible.builtin.ini_file:
     path: /etc/grafana/grafana.ini

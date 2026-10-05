@@ -1,31 +1,32 @@
 all:
+  vars:
+    lab_config: "{{ lookup('file', inventory_dir ~ '/lab-config.json') | from_json }}"
+    ansible_python_interpreter: /usr/bin/python3
+    ansible_ssh_common_args: >-
+      -o StrictHostKeyChecking=no
+      -o UserKnownHostsFile=/dev/null
   children:
     webservers:
       hosts:
         web01:
-          ansible_host: 192.168.56.30
+          ansible_host: "{{ lab_config.vm_ips.web01 }}"
           ansible_user: vagrant
           ansible_ssh_private_key_file: ~/.ssh/vagrant-enterprise-sre-lab/web01
     appservers:
       hosts:
         app01:
-          ansible_host: 192.168.56.31
+          ansible_host: "{{ lab_config.vm_ips.app01 }}"
           ansible_user: vagrant
           ansible_ssh_private_key_file: ~/.ssh/vagrant-enterprise-sre-lab/app01
     databases:
       hosts:
         db01:
-          ansible_host: 192.168.56.32
+          ansible_host: "{{ lab_config.vm_ips.db01 }}"
           ansible_user: vagrant
           ansible_ssh_private_key_file: ~/.ssh/vagrant-enterprise-sre-lab/db01
     monitoring:
       hosts:
         monitoring01:
-          ansible_host: 192.168.56.33
+          ansible_host: "{{ lab_config.vm_ips.monitoring01 }}"
           ansible_user: vagrant
           ansible_ssh_private_key_file: ~/.ssh/vagrant-enterprise-sre-lab/monitoring01
-  vars:
-    ansible_python_interpreter: /usr/bin/python3
-    ansible_ssh_common_args: >-
-      -o StrictHostKeyChecking=no
-      -o UserKnownHostsFile=/dev/null

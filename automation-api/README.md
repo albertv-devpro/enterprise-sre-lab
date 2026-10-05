@@ -50,10 +50,15 @@ bash automation-api/generate-dev-certs.sh
 ```
 
 The script creates a private local development CA and an API certificate with
-SANs for `localhost`, `127.0.0.1`, and `192.168.56.1`. Certificate/private-key
+SANs for `localhost`, `127.0.0.1`, and the host-only IP in the repository's
+`lab-config.json`. Certificate/private-key
 files live under
 `~/.config/enterprise-sre-automation/tls`, outside Git. The CA private key
 `lab-ca.key` must never be copied to a VM or committed.
+Edit the repository's `lab-config.json` before generating these files if your
+host-only address differs from the default. To change it after certificate
+generation, move the existing `tls` directory aside and regenerate; the
+script intentionally refuses to overwrite existing TLS material.
 
 ## Run locally over HTTPS
 
@@ -116,9 +121,9 @@ uvicorn --app-dir automation-api main:app \
   --ssl-keyfile "$HOME/.config/enterprise-sre-automation/tls/api.key"
 ```
 
-In elevated Windows PowerShell, run the port-forward script. It binds
-`192.168.56.1:5000`, forwards to WSL, and permits only `monitoring01`
-(`192.168.56.33`):
+In elevated Windows PowerShell, run the port-forward script. It reads the
+host-only and monitoring VM addresses from `lab-config.json`, forwards port
+5000 to WSL, and permits only `monitoring01`:
 
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -File "$env:USERPROFILE\enterprise-sre-lab\automation-api\windows-portproxy.ps1"
@@ -202,7 +207,7 @@ python -m pytest
   `NodeExporterDown`, and its instance matches an inventory host. Check the
   incident for cooldown status.
 - **TLS verification fails:** confirm the server certificate SAN includes
-  `192.168.56.1` and the deployed CA file matches the WSL
+  the configured host-only IP and the deployed CA file matches the WSL
   `lab-ca.crt`. Reapply the observability role after regenerating the CA.
 - **GitHub returns 401/403:** verify the HMAC secret, event signature, and
   repository `owner/name`.

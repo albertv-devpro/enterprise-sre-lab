@@ -12,7 +12,7 @@ route:
 receivers:
   - name: sre-api-webhook
     webhook_configs:
-      - url: https://192.168.56.1:5000/api/v1/webhooks/alertmanager
+      - url: https://{{ lab_config.host_only_ip }}:5000/api/v1/webhooks/alertmanager
         send_resolved: true
         http_config:
           authorization:

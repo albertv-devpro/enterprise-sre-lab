@@ -77,6 +77,31 @@ Ansible is run from WSL against the VM host-only addresses. Vagrant SSH uses
 VirtualBox NAT/port forwarding and is separate from Ansible's direct SSH
 connection to those addresses.
 
+### Configure the host-only network
+
+`lab-config.json` is the single source of truth for the VM addresses and the
+Windows host-only adapter address: `host_only_ip` sets the adapter IP, and
+`vm_ips` maps each VM name to its static address. The checked-in values
+(`192.168.56.1` for
+the host and `192.168.56.30`–`.33` for the VMs) are defaults for this lab, not
+your laptop's Wi-Fi or Ethernet address. If that host-only subnet conflicts
+with your local network, edit this JSON file before starting the VMs. Keep the
+host and all VM addresses on the same unused private subnet, use unique
+addresses outside any DHCP range, and configure the VirtualBox host-only
+adapter to use the selected host address. Do not substitute your laptop's
+LAN-facing IP.
+
+Vagrant, the Ansible inventory, the API's remediation allowlist, Alertmanager,
+TLS certificate generation, and the Windows port-forwarding script all read
+this file. After changing addresses on an existing lab, update the VirtualBox
+host-only adapter, run `vagrant reload`, restart the API, and rerun the Windows
+port-forwarding script. If you already generated TLS files, move the existing
+`~/.config/enterprise-sre-automation/tls` directory aside before rerunning
+`bash automation-api/generate-dev-certs.sh`; then reapply the observability
+role so the VM trusts the newly generated CA. The examples and URLs below show
+the checked-in defaults; use the corresponding values from `lab-config.json`
+if you customize them.
+
 ### Operational workflow
 
 ```mermaid
@@ -116,6 +141,7 @@ current checkout. It does not fetch or check out the push commit.
 .
 ├── Vagrantfile
 ├── inventory.yml
+├── lab-config.json            # Shared host-only and VM IP configuration
 ├── ansible.cfg                 # Project example; ignored by Ansible on /mnt/c
 ├── playbooks/
 │   └── site.yml                # Baseline and role orchestration
@@ -656,8 +682,8 @@ bash automation-api/generate-dev-certs.sh
 
 The script creates a local development CA and server certificate outside the
 repository in `~/.config/enterprise-sre-automation/tls`, with SANs for
-`localhost`, `127.0.0.1`, and `192.168.56.1`. Keep `lab-ca.key` private; only
-the public CA certificate is deployed to the VM.
+`localhost`, `127.0.0.1`, and the configured host-only IP in `lab-config.json`.
+Keep `lab-ca.key` private; only the public CA certificate is deployed to the VM.
 
 ### Why the API uses TLS
 

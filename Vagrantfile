@@ -1,28 +1,32 @@
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
 
+require "json"
+
+LAB_CONFIG = JSON.parse(File.read(File.join(__dir__, "lab-config.json")))
+
 SERVERS = {
   "web01" => {
     box: "ubuntu/jammy64",
-    ip: "192.168.56.30",
+    ip: LAB_CONFIG.fetch("vm_ips").fetch("web01"),
     cpus: 1,
     memory: 1024
   },
   "app01" => {
     box: "generic/rocky9",
-    ip: "192.168.56.31",
+    ip: LAB_CONFIG.fetch("vm_ips").fetch("app01"),
     cpus: 2,
     memory: 2048
   },
   "db01" => {
     box: "generic/rocky9",
-    ip: "192.168.56.32",
+    ip: LAB_CONFIG.fetch("vm_ips").fetch("db01"),
     cpus: 1,
     memory: 1024
   },
   "monitoring01" => {
     box: "ubuntu/jammy64",
-    ip: "192.168.56.33",
+    ip: LAB_CONFIG.fetch("vm_ips").fetch("monitoring01"),
     cpus: 2,
     memory: 2048
   }

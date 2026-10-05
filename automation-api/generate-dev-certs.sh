@@ -2,6 +2,11 @@
 set -euo pipefail
 umask 077
 
+project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+host_only_ip="$(
+  python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["host_only_ip"])' \
+    "$project_root/lab-config.json"
+)"
 cert_dir="${XDG_CONFIG_HOME:-$HOME/.config}/enterprise-sre-automation/tls"
 ca_key="$cert_dir/lab-ca.key"
 ca_cert="$cert_dir/lab-ca.crt"
@@ -34,12 +39,12 @@ openssl req -new -newkey ec -pkeyopt ec_paramgen_curve:P-256 -noenc \
   -out "$api_csr" \
   -subj "/CN=Enterprise SRE Lab Automation API"
 
-cat > "$extensions" <<'EOF'
-basicConstraints=critical,CA:FALSE
-keyUsage=critical,digitalSignature
-extendedKeyUsage=serverAuth
-subjectAltName=DNS:localhost,IP:127.0.0.1,IP:192.168.56.1
-EOF
+printf '%s\n' \
+  'basicConstraints=critical,CA:FALSE' \
+  'keyUsage=critical,digitalSignature' \
+  'extendedKeyUsage=serverAuth' \
+  "subjectAltName=DNS:localhost,IP:127.0.0.1,IP:${host_only_ip}" \
+  > "$extensions"
 
 openssl x509 -req -sha256 -days 397 \
   -in "$api_csr" \

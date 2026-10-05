@@ -1,9 +1,18 @@
 param(
     [string]$WslDistribution = "Ubuntu-24.04",
-    [string]$ListenAddress = "192.168.56.1",
+    [string]$ListenAddress,
     [int]$Port = 5000,
-    [string]$AllowedVmAddress = "192.168.56.33"
+    [string]$AllowedVmAddress
 )
+
+$labConfigPath = Join-Path $PSScriptRoot "..\lab-config.json"
+$labConfig = Get-Content -Raw -Path $labConfigPath | ConvertFrom-Json
+if (-not $PSBoundParameters.ContainsKey("ListenAddress")) {
+    $ListenAddress = $labConfig.host_only_ip
+}
+if (-not $PSBoundParameters.ContainsKey("AllowedVmAddress")) {
+    $AllowedVmAddress = $labConfig.vm_ips.monitoring01
+}
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = [Security.Principal.WindowsPrincipal]::new($identity)

@@ -32,18 +32,14 @@ from pydantic import BaseModel, Field, ValidationError
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PLAYBOOK = PROJECT_ROOT / "playbooks" / "site.yml"
+LAB_CONFIG = json.loads((PROJECT_ROOT / "lab-config.json").read_text())
 TARGET_TAGS = {
     "baseline": "baseline",
     "node_exporter": "node_exporter",
     "webserver": "webserver",
     "observability": "observability",
 }
-INVENTORY_HOSTS = {
-    "web01": "192.168.56.30",
-    "app01": "192.168.56.31",
-    "db01": "192.168.56.32",
-    "monitoring01": "192.168.56.33",
-}
+INVENTORY_HOSTS = LAB_CONFIG["vm_ips"]
 ADDRESS_TO_HOST = {address: host for host, address in INVENTORY_HOSTS.items()}
 REMEDIATION_ALERTS = {"NodeExporterDown"}
 REMEDIATION_COOLDOWN_SECONDS = 600

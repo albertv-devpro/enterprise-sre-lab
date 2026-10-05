@@ -908,9 +908,11 @@ python -m pytest
 - Use the WSL localhost bind for manual-only API use. Binding to `0.0.0.0` is
   only needed for the VM webhook path and should be paired with the included
   restricted Windows firewall/port-forward rule.
-- The lab webhook uses plain HTTP on an isolated host-only network. Do not
-  expose it to a public or untrusted network; production integrations should
-  use TLS, managed secrets, durable job processing, and stronger access control.
+- The FastAPI webhook uses HTTPS with a private lab CA; the Prometheus and
+  Grafana UIs use plain HTTP on the isolated host-only network. Do not expose
+  these services to a public or untrusted network. Production integrations
+  need managed certificates and secrets, durable job processing, and stronger
+  access control.
 - SSH host-key checking is disabled only for this disposable Vagrant inventory.
 - Alert payloads and captured playbook output may contain sensitive data; keep
   the local SQLite audit database protected and do not include secrets in
@@ -918,6 +920,10 @@ python -m pytest
 - GitHub webhook secrets are separate from the API token. Signature checking
   and repository/branch allowlists reduce spoofing risk but do not make a
   development server suitable for public exposure.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
 
 ## Troubleshooting
 

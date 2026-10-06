@@ -1,0 +1,39 @@
+Alertmanager active-alert evidence
+==================================
+
+Source: terminal output from `amtool alert query` and the Alertmanager v2
+`/api/v2/alerts` endpoint during the 2026-10-06 lab test. No credentials or
+authentication headers were used for these local Alertmanager queries.
+
+amtool alert query
+------------------
+Alertname: NodeExporterDown
+Starts At: 2026-10-06 22:11:40 UTC
+Summary: Node Exporter is down on 192.168.56.31:9100
+State: active
+
+Alertmanager HTTP API
+---------------------
+Alertname: NodeExporterDown
+Instance: 192.168.56.31:9100
+Job: enterprise-nodes
+Severity: critical
+State: active
+Receiver: sre-api-webhook
+Starts At: 2026-10-06T22:11:40.214Z
+Updated At: 2026-10-06T22:19:40.245Z
+Ends At: 2026-10-06T22:23:40.214Z
+
+Evidence interpretation
+-----------------------
+Alertmanager had an active NodeExporterDown alert for app01 and routed it to
+the sre-api-webhook receiver. The separate screenshot
+prometheus-alert-node-exporter-firing.png shows Prometheus with one firing
+alert, and grafana-fleet-dashboard-exporter-down.png shows the corresponding
+exporter-down condition in the dashboard.
+
+The API audit summary in fastapi-alertmanager-incident-summary.txt records a
+firing notification for the same app01 target at an earlier start time. It is
+a separate delivery and is not presented here as a timestamp-matched record of
+this Alertmanager snapshot. Capture a fresh API audit response after this
+delivery if exact timestamp correlation or the resolved lifecycle is needed.

@@ -1,0 +1,44 @@
+FastAPI Alertmanager incident evidence
+======================================
+
+Source: successful GET /api/v1/tickets?limit=20 response provided during the
+2026-10-06 lab verification. Authentication headers, API token, and the
+internal incident identifier are intentionally omitted.
+
+Recorded event
+--------------
+Kind: alert
+Audit status: RECEIVED
+Alert name: NodeExporterDown
+Alert status in received payload: firing
+Instance: app01 (192.168.56.31:9100)
+Job: enterprise-nodes
+Severity: critical
+Alert started at: 2026-10-06T21:51:40.214Z
+API recorded event at: 2026-10-06T21:51:48.886781+00:00
+Remediation: NOT_REQUESTED
+API error: none
+
+Uvicorn access-log excerpt
+-------------------------
+The supplied Uvicorn log also shows:
+- GET /healthz returned HTTP 200.
+- Four POST /api/v1/webhooks/alertmanager requests returned HTTP 202 Accepted.
+- Four GET /api/v1/tickets?limit=20 requests returned HTTP 200.
+
+The access log confirms successful webhook HTTP responses and successful audit
+queries. It does not include the alert payload or identify which request was
+firing versus resolved; use the ticket records above for alert details. The
+client addresses, process ID, and unrelated favicon 404 are omitted.
+
+Evidence interpretation
+-----------------------
+This API audit record confirms that a firing NodeExporterDown notification
+reached the FastAPI Alertmanager webhook and was recorded. Remediation was not
+requested.
+
+The Prometheus firing screenshot and Alertmanager active-alert snapshot are
+preserved separately. The access log has no timestamps or payload details, so
+it cannot establish exact timestamp correlation between an individual POST
+and those snapshots. A resolved API event for this test is not included in the
+supplied output.

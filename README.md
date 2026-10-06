@@ -135,6 +135,47 @@ current checkout. It does not fetch or check out the push commit.
 | `databases` | `db01` | Rocky Linux 9 | `192.168.56.32` | Node Exporter |
 | `monitoring` | `monitoring01` | Ubuntu Jammy | `192.168.56.33` | Prometheus, Alertmanager, Grafana, Node Exporter |
 
+## Screenshots
+
+These captures show the lab in both its healthy baseline and a controlled
+Node Exporter failure test. Alert firing and active-state evidence is
+preserved separately in
+[`docs/screenshots/alertmanager-active-node-exporter-alert.txt`](docs/screenshots/alertmanager-active-node-exporter-alert.txt).
+
+### Grafana fleet dashboard
+
+![Grafana Enterprise SRE Lab fleet dashboard at healthy baseline](docs/screenshots/grafana-fleet-dashboard-healthy.png)
+
+### Prometheus targets
+
+![Prometheus scraping all four Node Exporter targets](docs/screenshots/prometheus-targets-all-up.png)
+
+### Prometheus alert rules at healthy baseline
+
+![Prometheus alert rules inactive at healthy baseline](docs/screenshots/prometheus-alerts-healthy.png)
+
+### Node Exporter alert pending
+
+![Prometheus showing NodeExporterDown pending evaluation](docs/screenshots/prometheus-alert-node-exporter-pending.png)
+
+### Node Exporter alert firing
+
+![Prometheus showing one firing NodeExporterDown alert](docs/screenshots/prometheus-alert-node-exporter-firing.png)
+
+### Grafana during the exporter-down test
+
+![Grafana dashboard showing one firing alert and 75 percent exporter availability](docs/screenshots/grafana-fleet-dashboard-exporter-down.png)
+
+The Debian Alertmanager package does not provide a web UI. Its captured
+`amtool` and HTTP API output confirms that the active `NodeExporterDown`
+alert was routed to `sre-api-webhook`. The separate
+[FastAPI incident evidence](docs/screenshots/fastapi-alertmanager-incident-summary.txt)
+records a firing notification for the same target from an earlier test; it is
+not timestamp-matched to this screenshot and Alertmanager snapshot.
+
+See [`docs/screenshots/README.md`](docs/screenshots/README.md) for evidence
+context and privacy checks before adding further captures.
+
 ## Repository layout
 
 ```text
@@ -149,6 +190,8 @@ current checkout. It does not fetch or check out the push commit.
 │   ├── monitoring/             # Node Exporter for Debian and Rocky
 │   ├── webserver/              # Nginx and generated landing page
 │   └── observability/          # Prometheus, alert rules, Alertmanager, Grafana
+├── docs/
+│   └── screenshots/            # Verified, privacy-reviewed runtime evidence
 ├── automation-api/
 │   ├── main.py                 # FastAPI endpoints and Ansible runner
 │   ├── tests/
@@ -312,12 +355,30 @@ After the corresponding playbook runs, and while the VMs are running:
 
 - Nginx landing page: `http://192.168.56.30/`
 - Prometheus: `http://192.168.56.33:9090/`
-- Alertmanager: `http://192.168.56.33:9093/`
+- Alertmanager HTTP API: `http://192.168.56.33:9093/`
 - Grafana: `http://192.168.56.33:3000/`
 
 Grafana's initial package credentials can vary by package/release. Follow the
 initial login prompt and set a unique password; do not assume default
 credentials are safe.
+
+The Debian Alertmanager package used here does not include its web UI. Use
+Prometheus's **Alerts** page to inspect rule evaluation, `amtool` or the
+Alertmanager HTTP API to inspect active alerts, and the FastAPI audit log to
+review webhook deliveries including resolved notifications. From WSL, query
+Alertmanager with:
+
+```bash
+ansible monitoring01 -m command -a \
+  "amtool --alertmanager.url=http://127.0.0.1:9093 alert query"
+```
+
+For the raw active-alert API response:
+
+```bash
+ansible monitoring01 -m command -a \
+  "curl -fsS http://127.0.0.1:9093/api/v2/alerts"
+```
 
 Prometheus scrapes each inventory host on port `9100`. The observability role
 deploys rules for a Node Exporter target being down and sustained high CPU usage.
@@ -626,10 +687,18 @@ Verify the monitoring VM can validate the API's TLS certificate:
 
 ```bash
 vagrant ssh monitoring01 -c \
-  "curl --cacert /etc/alertmanager/api-ca.crt -fsS https://192.168.56.1:5000/healthz"
+  "sudo -u prometheus curl --cacert /etc/alertmanager/api-ca.crt -fsS https://192.168.56.1:5000/healthz"
 ```
 
-Expected response: `{"status":"ok"}`.
+Run this as `prometheus`, because `/etc/alertmanager` is restricted to root and
+the Prometheus service group; the default `vagrant` account cannot traverse it.
+Expected response: `{"status":"ok"}`. When testing through Ansible, use
+privilege escalation and run curl as the service account:
+
+```bash
+ansible monitoring01 -b -m command -a \
+  "runuser -u prometheus -- curl --cacert /etc/alertmanager/api-ca.crt -fsS https://192.168.56.1:5000/healthz"
+```
 
 ### Validate the monitoring stack
 
@@ -894,7 +963,7 @@ port-forward sends that traffic to the current WSL IPv4 address.
 
    ```bash
    cd ~/enterprise-sre-lab
-   vagrant ssh monitoring01 -c "curl --cacert /etc/alertmanager/api-ca.crt -fsS https://192.168.56.1:5000/healthz"
+   vagrant ssh monitoring01 -c "sudo -u prometheus curl --cacert /etc/alertmanager/api-ca.crt -fsS https://192.168.56.1:5000/healthz"
    ```
 
 5. Send a test event from WSL and inspect the audit log:
@@ -913,10 +982,12 @@ port-forward sends that traffic to the current WSL IPv4 address.
      'https://127.0.0.1:5000/api/v1/tickets?limit=20'
    ```
 
-Prometheus alert delivery is asynchronous; inspect Prometheus's **Alerts** page
-and Alertmanager's **Alerts** page when testing rule-driven notifications.
-Events are logged as incidents; only the explicitly enabled and allowlisted
-Node Exporter recovery can trigger a remediation play.
+Prometheus alert delivery is asynchronous. Inspect Prometheus's **Alerts** page
+for rule state and use `amtool` or Alertmanager's HTTP API for currently active
+alerts; the Debian package does not provide an Alertmanager web UI. Inspect the
+FastAPI audit log for delivered firing and resolved webhook events. Only the
+explicitly enabled and allowlisted Node Exporter recovery can trigger a
+remediation play.
 
 ## Test the API code
 

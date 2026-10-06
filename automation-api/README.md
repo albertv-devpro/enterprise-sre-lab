@@ -137,13 +137,52 @@ rules:
 ansible-playbook playbooks/site.yml --tags observability
 ```
 
+The checked-in addresses are examples for this lab. If you changed
+`host_only_ip` or `vm_ips` in `lab-config.json`, read the configured addresses
+from that file before running the checks below. From the repository root:
+
+```bash
+LAB_HOST_ONLY_IP="$(python3 -c 'import json; print(json.load(open("lab-config.json"))["host_only_ip"])')"
+MONITORING_IP="$(python3 -c 'import json; print(json.load(open("lab-config.json"))["vm_ips"]["monitoring01"])')"
+```
+
 The role installs only the public CA certificate on `monitoring01`; it does
 not copy the CA private key. Test connectivity from the VM:
 
 ```bash
 vagrant ssh monitoring01 -c \
-  "curl --cacert /etc/alertmanager/api-ca.crt -fsS https://192.168.56.1:5000/healthz"
+  "sudo -u prometheus curl --cacert /etc/alertmanager/api-ca.crt -fsS https://${LAB_HOST_ONLY_IP}:5000/healthz"
 ```
+
+Run the check as `prometheus`: `/etc/alertmanager` is restricted to root and
+the Prometheus service group, so the default `vagrant` account cannot traverse
+the directory. With Ansible, use privilege escalation and run curl as the
+service account:
+
+```bash
+ansible monitoring01 -b -m command -a \
+  "runuser -u prometheus -- curl --cacert /etc/alertmanager/api-ca.crt -fsS https://${LAB_HOST_ONLY_IP}:5000/healthz"
+```
+
+The Debian Alertmanager package in this lab does not include its web UI.
+Inspect rule evaluation in Prometheus at
+`http://${MONITORING_IP}:9090/alerts`.
+Query Alertmanager's active alerts with `amtool`:
+
+```bash
+ansible monitoring01 -m command -a \
+  "amtool --alertmanager.url=http://127.0.0.1:9093 alert query"
+```
+
+Or retrieve the raw active-alert response from its HTTP API:
+
+```bash
+ansible monitoring01 -m command -a \
+  "curl -fsS http://127.0.0.1:9093/api/v2/alerts"
+```
+
+Alertmanager's active-alert API is not a history of delivered notifications.
+Use the FastAPI audit log to review firing and resolved webhook deliveries.
 
 Remediation is disabled by default. To enable the narrowly scoped
 `NodeExporterDown` policy, stop Uvicorn and restart it after:

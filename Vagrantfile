@@ -28,7 +28,7 @@ SERVERS = {
     box: "ubuntu/jammy64",
     ip: LAB_CONFIG.fetch("vm_ips").fetch("monitoring01"),
     cpus: 2,
-    memory: 2048
+    memory: 4096
   }
 }.freeze
 

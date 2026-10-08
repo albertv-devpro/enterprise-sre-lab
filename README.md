@@ -14,6 +14,8 @@ and VirtualBox provide the infrastructure; Ansible configures it from Ubuntu
 - Four Ubuntu and Rocky Linux VMs with static VirtualBox host-only addresses.
 - Ansible baseline configuration and reusable roles.
 - Node Exporter on every VM, with Prometheus scraping the exporters.
+- Grafana Alloy ships systemd journal logs from all four VMs to Loki on
+  `monitoring01`, with a provisioned Grafana Loki data source.
 - Prometheus alert rules and Alertmanager forwarding incidents to the local
   FastAPI service.
 - A token-protected self-service API that runs allowlisted Ansible targets,
@@ -24,13 +26,18 @@ and VirtualBox provide the infrastructure; Ansible configures it from Ubuntu
 - A Windows port-forwarding helper to connect Alertmanager in a VM to the API
   running in WSL.
 
-The baseline, webserver, Node Exporter, Prometheus/Grafana roles, and API
-deployment endpoint are implemented. Alertmanager forwarding, alert rules,
-guarded opt-in Node Exporter remediation, and signed GitHub webhook handling
-are also implemented. The Windows-to-WSL forwarding and observability setup
-must be applied before VM-originated alerts can reach the API. The GitHub
-endpoint does not pull repository changes and requires a separately secured
-public HTTPS ingress for real GitHub.com delivery.
+The baseline, webserver, Node Exporter, Prometheus/Grafana, Loki, and Alloy
+roles and the API deployment endpoint are implemented. Alertmanager forwarding,
+alert rules, guarded opt-in Node Exporter remediation, and signed GitHub
+webhook handling are also implemented. The Windows-to-WSL forwarding and
+observability setup must be applied before VM-originated alerts can reach the
+API. The GitHub endpoint does not pull repository changes and requires a
+separately secured public HTTPS ingress for real GitHub.com delivery.
+
+Loki runs as a single-binary learning deployment with local filesystem storage
+and seven-day retention. Grafana Alloy collects systemd journal entries from
+the four VMs. This is intentionally limited to the trusted host-only lab
+network and is not a production logging architecture.
 
 ## Innovation highlights
 
@@ -57,16 +64,18 @@ public HTTPS ingress for real GitHub.com delivery.
 
 ```text
 Windows host
-  VirtualBox host-only adapter: 192.168.56.1/24
+  VirtualBox host-only adapter: private address from lab-config.json
        |
-       +-- web01         192.168.56.30  Ubuntu 22.04 / Nginx / Node Exporter
-       +-- app01         192.168.56.31  Rocky Linux 9 / Node Exporter
-       +-- db01          192.168.56.32  Rocky Linux 9 / Node Exporter
-       +-- monitoring01  192.168.56.33  Ubuntu 22.04 / Prometheus /
+       +-- web01         private VM address / Ubuntu 22.04 / Nginx / Node Exporter / Alloy
+       +-- app01         private VM address / Rocky Linux 9 / Node Exporter / Alloy
+       +-- db01          private VM address / Rocky Linux 9 / Node Exporter / Alloy
+       +-- monitoring01  private VM address / Ubuntu 22.04 / Prometheus /
        |                                                Alertmanager /
-       |                                                Grafana / Node Exporter
+       |                                                Grafana / Loki /
+       |                                                Node Exporter
+       +-- All four VMs  Grafana Alloy --> Loki --> Grafana Explore
        |
-       +-- Windows port forward 192.168.56.1:5000 -> current WSL IPv4:5000
+       +-- Windows port forward host-only-address:5000 -> current WSL IPv4:5000
                                                               |
                                                               v
                                               FastAPI on Ubuntu 24.04 WSL
@@ -79,17 +88,15 @@ connection to those addresses.
 
 ### Configure the host-only network
 
-`lab-config.json` is the single source of truth for the VM addresses and the
-Windows host-only adapter address: `host_only_ip` sets the adapter IP, and
-`vm_ips` maps each VM name to its static address. The checked-in values
-(`192.168.56.1` for
-the host and `192.168.56.30`–`.33` for the VMs) are defaults for this lab, not
-your laptop's Wi-Fi or Ethernet address. If that host-only subnet conflicts
-with your local network, edit this JSON file before starting the VMs. Keep the
-host and all VM addresses on the same unused private subnet, use unique
-addresses outside any DHCP range, and configure the VirtualBox host-only
-adapter to use the selected host address. Do not substitute your laptop's
-LAN-facing IP.
+`lab-config.json` is the single source of truth for VM and Windows host-only
+adapter addresses: `host_only_ip` sets the adapter IP, and `vm_ips` maps each
+VM name to its static address. The checked-in values are private-network
+examples, not your laptop's Wi-Fi or Ethernet address. If the example
+host-only subnet conflicts with your local network, edit this JSON file before
+starting the VMs. Keep the host and all VM addresses on the same unused
+private subnet, use unique addresses outside any DHCP range, and configure
+the VirtualBox host-only adapter to use the selected host address. Do not
+substitute your laptop's LAN-facing IP.
 
 Vagrant, the Ansible inventory, the API's remediation allowlist, Alertmanager,
 TLS certificate generation, and the Windows port-forwarding script all read
@@ -108,10 +115,13 @@ if you customize them.
 sequenceDiagram
     participant A as Ansible in WSL
     participant V as Lab VMs
+    participant Alloy as Grafana Alloy on VMs
+    participant Loki as Loki on monitoring01
     participant P as Prometheus on monitoring01
     participant M as Alertmanager on monitoring01
     participant API as FastAPI in WSL
     A->>V: Apply baseline and roles
+    Alloy->>Loki: Ship systemd journal logs
     V->>P: Node Exporter metrics :9100
     P->>P: Evaluate alert rules
     P->>M: Send firing/resolved alert
@@ -128,12 +138,34 @@ The GitHub push endpoint is a separate path: it verifies the push signature
 and configured repository/branch, then starts Ansible using the API host's
 current checkout. It does not fetch or check out the push commit.
 
-| Inventory group | Host | OS | Address | Services |
-| --- | --- | --- | --- | --- |
-| `webservers` | `web01` | Ubuntu Jammy | `192.168.56.30` | Nginx, Node Exporter |
-| `appservers` | `app01` | Rocky Linux 9 | `192.168.56.31` | Node Exporter |
-| `databases` | `db01` | Rocky Linux 9 | `192.168.56.32` | Node Exporter |
-| `monitoring` | `monitoring01` | Ubuntu Jammy | `192.168.56.33` | Prometheus, Alertmanager, Grafana, Node Exporter |
+| Inventory group | Host | OS | Services |
+| --- | --- | --- | --- |
+| `webservers` | `web01` | Ubuntu Jammy | Nginx, Node Exporter, Grafana Alloy |
+| `appservers` | `app01` | Rocky Linux 9 | Node Exporter, Grafana Alloy |
+| `databases` | `db01` | Rocky Linux 9 | Node Exporter, Grafana Alloy |
+| `monitoring` | `monitoring01` | Ubuntu Jammy | Prometheus, Alertmanager, Grafana, Loki, Node Exporter, Grafana Alloy |
+
+### Centralized VM logs with Loki
+
+Grafana Alloy reads the systemd journal on each VM and pushes entries to Loki
+on `monitoring01`. In Grafana, open **Explore**, choose the **Loki** data
+source, and query `{job="systemd-journal"}`; filter a VM with
+`{job="systemd-journal", host="app01"}`. The first collection pass reads at
+most one hour of existing journal entries.
+
+Loki uses local filesystem storage with seven-day retention and modest
+ingestion/query limits for this lab. Retention is asynchronous and is not a
+hard disk quota. Loki has no built-in authentication here; its HTTP listener is
+bound to the monitoring VM's host-only address and should not be exposed beyond
+the trusted lab network. VM-local log data is lost if `monitoring01` is
+destroyed. Treat collected logs as sensitive operational data; do not publish
+raw log output or include credentials in commands that may be recorded.
+
+Apply or reapply only the log stack and Grafana's Loki data source from WSL:
+
+```bash
+ansible-playbook playbooks/site.yml --tags logging
+```
 
 ## Screenshots
 
@@ -189,9 +221,12 @@ context and privacy checks before adding further captures.
 ├── roles/
 │   ├── monitoring/             # Node Exporter for Debian and Rocky
 │   ├── webserver/              # Nginx and generated landing page
-│   └── observability/          # Prometheus, alert rules, Alertmanager, Grafana
+│   ├── observability/          # Prometheus, alert rules, Alertmanager, Grafana
+│   ├── loki/                   # Single-node local log storage
+│   └── logging/                # Grafana Alloy journal collectors
 ├── docs/
 │   └── screenshots/            # Verified, privacy-reviewed runtime evidence
+├── commands-run.md              # Repeatable startup, validation, alert test, and shutdown
 ├── automation-api/
 │   ├── main.py                 # FastAPI endpoints and Ansible runner
 │   ├── tests/
@@ -199,6 +234,9 @@ context and privacy checks before adding further captures.
 │   └── requirements*.txt
 └── ...
 ```
+
+For a concise, repeatable operational sequence after a laptop/WSL restart, see
+the [commands runbook](commands-run.md).
 
 ## Prerequisites
 
@@ -219,6 +257,11 @@ not already present:
 sudo apt update
 sudo apt install -y ansible openssh-client
 ```
+
+The four VMs allocate **8 GB RAM and 6 vCPUs** in total; `monitoring01` is
+configured for 2 vCPUs and 4 GB RAM to run the metrics, alerting, dashboards,
+and local log storage. Allow additional memory for Windows and WSL; a host with
+16 GB RAM or more is recommended for comfortable use.
 
 Keep the repository under a `enterprise-sre-lab` directory in your own Windows
 user profile. Ansible may warn that a Windows-mounted working directory is
@@ -353,10 +396,12 @@ ansible-playbook --list-tasks playbooks/site.yml
 
 After the corresponding playbook runs, and while the VMs are running:
 
-- Nginx landing page: `http://192.168.56.30/`
-- Prometheus: `http://192.168.56.33:9090/`
-- Alertmanager HTTP API: `http://192.168.56.33:9093/`
-- Grafana: `http://192.168.56.33:3000/`
+- Nginx landing page: `http://<web01-host-only-address>/`
+- Prometheus: `http://<monitoring01-host-only-address>:9090/`
+- Alertmanager HTTP API: `http://<monitoring01-host-only-address>:9093/`
+- Grafana: `http://<monitoring01-host-only-address>:3000/`
+
+Replace each placeholder with the corresponding value in `lab-config.json`.
 
 Grafana's initial package credentials can vary by package/release. Follow the
 initial login prompt and set a unique password; do not assume default
@@ -432,11 +477,12 @@ if desired, create additional dashboards manually.
 
 ### 1. Verify Prometheus
 
-Open Prometheus from Windows at <http://192.168.56.33:9090>.
+Open Prometheus from Windows at
+`http://<monitoring01-host-only-address>:9090`, using `vm_ips.monitoring01`
+from `lab-config.json`.
 
 1. Select **Status → Targets**. All four targets in the `enterprise-nodes` job
-   should show **UP**: `192.168.56.30:9100`, `.31:9100`, `.32:9100`, and
-   `.33:9100`.
+   should show **UP** for all four configured VM targets.
 2. Open **Alerts**. `NodeExporterDown` should not be firing when every exporter
    is reachable. `NodeHighCPUUsage` fires only when a host exceeds its configured
    CPU threshold for the full alert duration.
@@ -457,8 +503,9 @@ Open Prometheus from Windows at <http://192.168.56.33:9090>.
 
 ### 2. Verify Grafana's Prometheus data source
 
-Open Grafana at <http://192.168.56.33:3000> and sign in with the Grafana admin
-account. Grafana disables anonymous access, so sign-in is required.
+Open Grafana at `http://<monitoring01-host-only-address>:3000` and sign in
+with the Grafana admin account. Use `vm_ips.monitoring01` from
+`lab-config.json`. Grafana disables anonymous access, so sign-in is required.
 
 Open **Connections → Data sources → Prometheus**. Ansible configures its
 server URL as `http://localhost:9090` and makes it the default data source.
@@ -687,7 +734,7 @@ Verify the monitoring VM can validate the API's TLS certificate:
 
 ```bash
 vagrant ssh monitoring01 -c \
-  "sudo -u prometheus curl --cacert /etc/alertmanager/api-ca.crt -fsS https://192.168.56.1:5000/healthz"
+  "sudo -u prometheus curl --cacert /etc/alertmanager/api-ca.crt -fsS 'https://<host-only-address>:5000/healthz'"
 ```
 
 Run this as `prometheus`, because `/etc/alertmanager` is restricted to root and
@@ -697,7 +744,7 @@ privilege escalation and run curl as the service account:
 
 ```bash
 ansible monitoring01 -b -m command -a \
-  "runuser -u prometheus -- curl --cacert /etc/alertmanager/api-ca.crt -fsS https://192.168.56.1:5000/healthz"
+  "runuser -u prometheus -- curl --cacert /etc/alertmanager/api-ca.crt -fsS 'https://<host-only-address>:5000/healthz'"
 ```
 
 ### Validate the monitoring stack
@@ -717,10 +764,10 @@ vagrant ssh monitoring01 -c \
 
 All three services should be `active`; Prometheus and Alertmanager should
 report healthy, and Grafana should return `"database":"ok"`. In Prometheus at
-`http://192.168.56.33:9090`, open **Status → Targets** and verify all four
+the Prometheus URL above, open **Status → Targets** and verify all four
 `enterprise-nodes` targets are **UP**. Run `up{job="enterprise-nodes"}` in the
 query page; expect four results, each with value `1`. Check **Alerts** for
-unexpected firing alerts. Grafana is at `http://192.168.56.33:3000`.
+unexpected firing alerts. Grafana is at the monitoring URL above.
 
 `vagrant halt` preserves VM disks. `vagrant destroy` deletes them; dashboards
 and other data created only inside a VM are not backed up or automatically
@@ -921,8 +968,9 @@ restart. Run one Uvicorn worker for this lab.
 
 The API on WSL localhost is not reachable as `127.0.0.1` from `monitoring01`:
 that address would point back to the VM. The configured Alertmanager target is
-the Windows VirtualBox host-only address, `192.168.56.1:5000`. A Windows
-port-forward sends that traffic to the current WSL IPv4 address.
+the Windows VirtualBox host-only address on port `5000`, read from
+`host_only_ip` in `lab-config.json`. A Windows port-forward sends that traffic
+to the current WSL IPv4 address.
 
 1. Start the API so it listens on WSL interfaces. Keep this terminal running:
 
@@ -937,8 +985,8 @@ port-forward sends that traffic to the current WSL IPv4 address.
    ```
 
 2. In **elevated Windows PowerShell**, create/update the port proxy and firewall
-   rule. The rule allows inbound port 5000 only from `monitoring01`
-   (`192.168.56.33`):
+   rule. The rule allows inbound port 5000 only from the configured
+   `monitoring01` address:
 
    ```powershell
    powershell.exe -ExecutionPolicy Bypass -File "$env:USERPROFILE\enterprise-sre-lab\automation-api\windows-portproxy.ps1"
@@ -963,7 +1011,7 @@ port-forward sends that traffic to the current WSL IPv4 address.
 
    ```bash
    cd ~/enterprise-sre-lab
-   vagrant ssh monitoring01 -c "sudo -u prometheus curl --cacert /etc/alertmanager/api-ca.crt -fsS https://192.168.56.1:5000/healthz"
+   vagrant ssh monitoring01 -c "sudo -u prometheus curl --cacert /etc/alertmanager/api-ca.crt -fsS 'https://<host-only-address>:5000/healthz'"
    ```
 
 5. Send a test event from WSL and inspect the audit log:

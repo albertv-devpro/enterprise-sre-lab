@@ -47,3 +47,17 @@
   tags: [observability]
   roles:
     - observability
+
+- name: Deploy Loki log storage
+  hosts: monitoring
+  become: true
+  tags: [logging]
+  roles:
+    - loki
+
+- name: Configure Alloy log collectors
+  hosts: all
+  become: true
+  tags: [logging]
+  roles:
+    - logging

@@ -1,0 +1,84 @@
+---
+- name: Verify Grafana Alloy host platform
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in ['Debian', 'RedHat']
+    fail_msg: Grafana Alloy is supported here only on Debian- and Red Hat-family hosts.
+
+- name: Install Grafana repository prerequisites on Debian-family hosts
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - gnupg
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Create APT keyrings directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Download Grafana APT repository signing key
+  ansible.builtin.get_url:
+    url: https://apt.grafana.com/gpg-full.key
+    dest: /etc/apt/keyrings/grafana.asc
+    owner: root
+    group: root
+    mode: '0644'
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Configure Grafana APT repository for Alloy
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/grafana.asc] https://apt.grafana.com stable main"
+    filename: grafana
+    state: present
+    update_cache: true
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Configure Grafana RPM repository for Alloy
+  ansible.builtin.yum_repository:
+    name: grafana
+    description: Grafana
+    baseurl: https://rpm.grafana.com
+    enabled: true
+    gpgcheck: true
+    repo_gpgcheck: true
+    gpgkey: https://rpm.grafana.com/gpg.key
+    sslverify: true
+    sslcacert: /etc/pki/tls/certs/ca-bundle.crt
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: Install Grafana Alloy
+  ansible.builtin.package:
+    name: alloy
+    state: present
+
+- name: Add Alloy to the journal-reading groups
+  ansible.builtin.user:
+    name: alloy
+    groups:
+      - adm
+      - systemd-journal
+    append: true
+  notify: Restart Alloy
+
+- name: Configure Alloy to ship the systemd journal to Loki
+  ansible.builtin.template:
+    src: config.alloy.j2
+    dest: /etc/alloy/config.alloy
+    owner: root
+    group: alloy
+    mode: '0640'
+  notify: Restart Alloy
+
+- name: Ensure Alloy is enabled and running
+  ansible.builtin.service:
+    name: alloy
+    state: started
+    enabled: true

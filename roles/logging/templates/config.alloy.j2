@@ -1,0 +1,15 @@
+loki.write "lab" {
+  endpoint {
+    url = "http://{{ hostvars[groups['monitoring'][0]]['ansible_host'] }}:3100/loki/api/v1/push"
+  }
+}
+
+loki.source.journal "system" {
+  forward_to = [loki.write.lab.receiver]
+  max_age    = "1h"
+
+  labels = {
+    host = "{{ inventory_hostname }}",
+    job  = "systemd-journal",
+  }
+}

@@ -1,0 +1,98 @@
+---
+- name: Verify Loki role host platform
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] == 'Debian'
+    fail_msg: Loki is currently deployed only on Debian-family monitoring hosts.
+
+- name: Install Grafana repository prerequisites for Loki
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - gnupg
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create APT keyrings directory for Loki
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Download Grafana repository signing key for Loki
+  ansible.builtin.get_url:
+    url: https://apt.grafana.com/gpg-full.key
+    dest: /etc/apt/keyrings/grafana.asc
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Configure Grafana APT repository for Loki
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/grafana.asc] https://apt.grafana.com stable main"
+    filename: grafana
+    state: present
+    update_cache: true
+
+- name: Install Loki
+  ansible.builtin.apt:
+    name: loki
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+    policy_rc_d: 101
+  register: loki_package_install
+
+- name: Stop Loki while applying the lab configuration
+  ansible.builtin.service:
+    name: loki
+    state: stopped
+  when: loki_package_install.changed
+
+- name: Create Loki service group
+  ansible.builtin.group:
+    name: loki
+    system: true
+    state: present
+  register: loki_group
+
+- name: Add Loki service user to its data-access group
+  ansible.builtin.user:
+    name: loki
+    groups:
+      - loki
+    append: true
+  register: loki_user
+
+- name: Create Loki data directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: loki
+    group: loki
+    mode: '0750'
+  loop:
+    - /var/lib/loki
+    - /var/lib/loki/chunks
+    - /var/lib/loki/rules
+    - /var/lib/loki/tsdb-index
+    - /var/lib/loki/tsdb-cache
+    - /var/lib/loki/compactor
+
+- name: Configure Loki for the private lab network
+  ansible.builtin.template:
+    src: config.yml.j2
+    dest: /etc/loki/config.yml
+    owner: root
+    group: loki
+    mode: '0640'
+  register: loki_config
+
+- name: Ensure Loki is enabled and running
+  ansible.builtin.service:
+    name: loki
+    state: "{{ 'restarted' if loki_config.changed or loki_group.changed or loki_user.changed else 'started' }}"
+    enabled: true

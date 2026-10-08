@@ -191,6 +191,16 @@
     mode: '0644'
   notify: Restart Grafana
 
+- name: Provision Enterprise SRE Lab logs dashboard
+  ansible.builtin.copy:
+    src: logs-dashboard.json
+    dest: /var/lib/grafana/dashboards/enterprise-sre-lab/logs.json
+    owner: grafana
+    group: grafana
+    mode: '0644'
+  tags: [logging]
+  notify: Restart Grafana
+
 - name: Disable anonymous Grafana access
   ansible.builtin.ini_file:
     path: /etc/grafana/grafana.ini

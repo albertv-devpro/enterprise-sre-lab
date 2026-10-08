@@ -148,10 +148,19 @@ current checkout. It does not fetch or check out the push commit.
 ### Centralized VM logs with Loki
 
 Grafana Alloy reads the systemd journal on each VM and pushes entries to Loki
-on `monitoring01`. In Grafana, open **Explore**, choose the **Loki** data
-source, and query `{job="systemd-journal"}`; filter a VM with
-`{job="systemd-journal", host="app01"}`. The first collection pass reads at
-most one hour of existing journal entries.
+on `monitoring01`. The provisioned **Enterprise SRE Lab - Logs** dashboard
+includes host and service filters. Use it to inspect all VM journals, or narrow
+to the Node Exporter test with host `app01` and service
+`node_exporter.service`. The equivalent LogQL query is
+`{job="systemd-journal", host="app01", service="node_exporter.service"}`. The
+first collection pass reads at most one hour of existing journal entries.
+
+To validate the incident workflow end to end, follow
+[`commands-run.md`](commands-run.md#optional-exercise-one-real-alert-and-recovery):
+stop only `app01`'s Node Exporter, wait for `NodeExporterDown` to fire in
+Prometheus, inspect the matching service journal entries in Grafana over the
+same time range, then restart the exporter and confirm the target recovers.
+The test is manual and does not enable automatic remediation.
 
 Loki uses local filesystem storage with seven-day retention and modest
 ingestion/query limits for this lab. Retention is asynchronous and is not a
